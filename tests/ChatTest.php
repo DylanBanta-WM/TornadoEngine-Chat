@@ -1,0 +1,175 @@
+<?php
+
+namespace TornadoEngine\Chat\Tests;
+
+use App\Harness\HarnessTask;
+use App\Models\Setting;
+use App\Models\User;
+use App\Updates\UpdateJob;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
+use Tests\TestCase;
+use TornadoEngine\Broker\Filter;
+use TornadoEngine\Broker\Models\Person;
+use TornadoEngine\Broker\Models\Rule;
+use TornadoEngine\Broker\Pseudonym;
+use TornadoEngine\Chat\Mcp\ChatServer;
+use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
+use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
+use TornadoEngine\Chat\Models\Approval;
+use TornadoEngine\Chat\Models\Conversation;
+
+class ChatTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private string $student = 'wm30ann@school.test';
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        Rule::create(['type' => 'ou', 'value' => '/Students', 'sub_ous' => true]);
+        Setting::put('broker.refreshed_at', now()->toIso8601String());
+        Person::create(['kind' => 'student', 'email' => $this->student, 'pseudonym' => Pseudonym::for('student', $this->student), 'values' => [[$this->student, 'email'], ['Annabel Quince', 'name']]]);
+        Person::create(['kind' => 'staff', 'email' => 'kim@school.test', 'pseudonym' => Pseudonym::for('staff', 'kim@school.test'), 'values' => [['kim@school.test', 'email']]]);
+        app(Filter::class)->forget();
+        config(['chat.approve_wait' => 0, 'chat.install_wait' => 0, 'chat.approve_poll' => 0]);
+    }
+
+    private function admin(): User
+    {
+        return User::factory()->create(['is_admin' => true]);
+    }
+
+    private function pseudonym(): string
+    {
+        return Pseudonym::for('student', $this->student).'@student';
+    }
+
+    public function test_messages_reach_claude_only_as_pseudonyms(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)->post('/chat', ['text' => "Make a tool to email {$this->student}'s teacher about Annabel Quince", 'mode' => 'plan'])
+            ->assertRedirect();
+
+        $task = HarnessTask::sole();
+        $this->assertStringNotContainsString($this->student, $task->prompt);
+        $this->assertStringNotContainsString('Annabel', $task->prompt);
+        $this->assertStringContainsString($this->pseudonym(), $task->prompt);
+        $this->assertSame(['chat', 'plan', 'mcp__tornado-chat__approve'], [$task->source, $task->permission_mode, $task->permission_prompt_tool]);
+        $this->assertStringContainsString('StyleGuide.MD', $task->system_prompt);
+
+        // The person sees what they wrote.
+        $conversation = Conversation::sole();
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")->assertSee("email {$this->student}", false)->assertSee('Waiting for the harness');
+    }
+
+    public function test_claudes_answer_shows_real_people_and_what_it_did(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Hello', 'mode' => 'bypassPermissions']);
+        $task = HarnessTask::sole();
+        $task->update(['status' => 'done', 'result_session_id' => 'session-1']);
+        foreach ([
+            ['type' => 'system', 'subtype' => 'init', 'session_id' => 'session-1'],
+            ['type' => 'assistant', 'message' => ['content' => [
+                ['type' => 'tool_use', 'name' => 'Bash', 'input' => ['command' => 'php artisan test']],
+                ['type' => 'tool_use', 'name' => 'Write', 'input' => ['file_path' => '/workspace/web/modules/notes/composer.json']],
+                ['type' => 'text', 'text' => '**[name '.Pseudonym::for('student', $this->student)."]** is {$this->pseudonym()}. <script>alert(1)</script>"],
+            ]]],
+        ] as $event) {
+            $task->events()->create(['event' => $event]);
+        }
+
+        $conversation = Conversation::sole();
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")
+            ->assertSee('Ran php artisan test')
+            ->assertSee('Wrote modules/notes/composer.json')
+            ->assertSee('<strong>Annabel Quince</strong>', false)
+            ->assertSee($this->student)
+            ->assertDontSee('<script>alert(1)</script>', false);
+
+        // The next message continues the same Claude Code session.
+        $this->actingAs($admin)->post("/chat/{$conversation->id}/messages", ['text' => 'Thanks', 'mode' => 'auto']);
+        $this->assertSame(['session-1', 'auto'], [HarnessTask::latest('id')->first()->session_id, HarnessTask::latest('id')->first()->permission_mode]);
+    }
+
+    public function test_one_message_at_a_time_and_it_can_be_stopped(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Build something', 'mode' => 'bypassPermissions']);
+        $conversation = Conversation::sole();
+
+        $this->actingAs($admin)->from("/chat/{$conversation->id}")->post("/chat/{$conversation->id}/messages", ['text' => 'Again', 'mode' => 'bypassPermissions'])
+            ->assertSessionHasErrors(['text' => 'Claude is still working on your last message.']);
+
+        $this->actingAs($admin)->post("/chat/{$conversation->id}/stop");
+        $this->assertSame('stopped', HarnessTask::sole()->status);
+    }
+
+    public function test_nothing_is_sent_until_the_broker_is_ready(): void
+    {
+        Rule::query()->delete();
+
+        $this->actingAs($this->admin())->from('/chat')->post('/chat', ['text' => 'Hello', 'mode' => 'bypassPermissions'])->assertSessionHasErrors('text');
+        $this->assertSame(0, HarnessTask::count());
+        $this->assertSame(0, Conversation::count());
+    }
+
+    public function test_permission_prompts_show_in_the_chat(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Build it', 'mode' => 'manual']);
+        HarnessTask::sole()->update(['status' => 'running']);
+
+        // Nobody answers in time: denied.
+        ChatServer::tool(ApproveTool::class, ['tool_name' => 'Bash', 'input' => ['command' => 'rm -rf modules/notes']])->assertSee('"behavior":"deny"');
+        $conversation = Conversation::sole();
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")->assertSee('rm -rf modules/notes')->assertSee('Denied');
+
+        // The person allows it.
+        Approval::created(fn (Approval $approval) => $approval->update(['status' => 'allowed']));
+        ChatServer::tool(ApproveTool::class, ['tool_name' => 'Write', 'input' => ['file_path' => '/workspace/web/modules/notes/x.php']])->assertSee('"behavior":"allow"');
+    }
+
+    public function test_people_answer_prompts_with_allow_or_deny(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Build it', 'mode' => 'manual']);
+        $conversation = Conversation::sole();
+        $approval = Approval::create(['chat_conversation_id' => $conversation->id, 'harness_task_id' => HarnessTask::sole()->id, 'tool' => 'Bash', 'input' => ['command' => 'php artisan test']]);
+
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")->assertSee('Allow')->assertSee('Deny');
+        $this->actingAs($admin)->post("/chat/{$conversation->id}/approvals/{$approval->id}", ['allow' => '1']);
+        $this->assertSame('allowed', $approval->fresh()->status);
+    }
+
+    public function test_install_module_queues_the_folder_for_the_updater(): void
+    {
+        ChatServer::tool(InstallModuleTool::class, ['folder' => '../core'])->assertHasErrors();
+        ChatServer::tool(InstallModuleTool::class, ['folder' => 'zz-missing'])->assertHasErrors();
+
+        $folder = base_path('modules/zz-chat-test');
+        File::ensureDirectoryExists($folder);
+        file_put_contents("{$folder}/composer.json", json_encode(['name' => 'local/zz-chat-test', 'extra' => ['tornado' => ['provider' => 'Local\\ZzChatTest\\Provider']]]));
+        try {
+            ChatServer::tool(InstallModuleTool::class, ['folder' => 'zz-chat-test'])->assertSee('hasn\'t finished');
+        } finally {
+            File::deleteDirectory($folder);
+        }
+
+        $job = UpdateJob::sole();
+        $this->assertSame(['module', 'local/zz-chat-test', 'modules/zz-chat-test'], [$job->kind, $job->package, $job->repository]);
+    }
+
+    public function test_only_people_with_the_permission_and_only_their_own_chats(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Mine', 'mode' => 'bypassPermissions']);
+        $conversation = Conversation::sole();
+
+        $this->actingAs(User::factory()->create())->get('/chat')->assertForbidden();
+        $this->actingAs($this->admin())->get("/chat/{$conversation->id}")->assertNotFound();
+    }
+}
