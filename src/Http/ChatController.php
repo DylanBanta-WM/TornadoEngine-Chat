@@ -50,7 +50,8 @@ class ChatController extends Controller
 
         return view('chat::page', [
             'conversation' => $conversation,
-            'turns' => $transcript->turns($conversation),
+            'turns' => $transcript->turns($conversation, $request->boolean('claude')),
+            'asClaude' => $request->boolean('claude'),
             'running' => $conversation->running(),
             'conversations' => Conversation::where('user_id', $request->user()->id)->latest('updated_at')->get(),
         ]);
@@ -62,7 +63,7 @@ class ChatController extends Controller
         $this->own($request, $conversation);
 
         return response()->json([
-            'html' => view('chat::turns', ['conversation' => $conversation, 'turns' => $transcript->turns($conversation)])->render(),
+            'html' => view('chat::turns', ['conversation' => $conversation, 'turns' => $transcript->turns($conversation, $request->boolean('claude')), 'asClaude' => $request->boolean('claude')])->render(),
             'running' => $conversation->running(),
         ]);
     }

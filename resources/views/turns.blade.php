@@ -33,10 +33,10 @@
                 </p>
                 @php($detail = $approval->input['command'] ?? $approval->input['file_path'] ?? null)
                 @if ($detail)
-                    <p class="break-all font-mono text-xs text-gray-700 dark:text-gray-300">{{ app(\TornadoEngine\Broker\Broker::class)->display(\Illuminate\Support\Str::after((string) $detail, '/workspace/web/')) }}</p>
+                    <p class="break-all font-mono text-xs text-gray-700 dark:text-gray-300">{{ (($asClaude ?? false) ? fn ($text) => $text : fn ($text) => app(\TornadoEngine\Broker\Broker::class)->display($text))(\Illuminate\Support\Str::after((string) $detail, '/workspace/web/')) }}</p>
                 @endif
                 @if ($approval->tool === 'ExitPlanMode' && isset($approval->input['plan']))
-                    <div class="break-words text-gray-900 dark:text-gray-100 {{ $markdown }}">{!! \Illuminate\Support\Str::markdown(app(\TornadoEngine\Broker\Broker::class)->display((string) $approval->input['plan']), ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}</div>
+                    <div class="break-words text-gray-900 dark:text-gray-100 {{ $markdown }}">{!! \Illuminate\Support\Str::markdown((($asClaude ?? false) ? fn ($text) => $text : fn ($text) => app(\TornadoEngine\Broker\Broker::class)->display($text))((string) $approval->input['plan']), ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}</div>
                 @endif
                 @if ($approval->status === 'pending')
                     <div class="flex justify-end gap-3">

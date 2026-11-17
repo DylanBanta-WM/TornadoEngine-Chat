@@ -23,7 +23,7 @@
             "settings": "/administration/chat"
         },
         "branch-alias": {
-            "dev-main": "0.11.x-dev"
+            "dev-main": "0.12.x-dev"
         }
     }
 }

@@ -20,15 +20,17 @@ class Transcript
     /**
      * @return list<array{text: string, at: \DateTimeInterface, status: ?string, items: list<array<string, mixed>>, approvals: Collection}>
      */
-    public function turns(Conversation $conversation): array
+    /** @param  bool  $asClaude  as Claude got it: pseudonyms, not names (to check the broker) */
+    public function turns(Conversation $conversation, bool $asClaude = false): array
     {
+        $this->asClaude = $asClaude;
         $approvals = $conversation->approvals()->orderBy('id')->get()->groupBy('harness_task_id');
         $turns = [];
 
         foreach ($conversation->messages()->with('task.events')->get() as $message) {
             $task = $message->task;
             $turns[] = [
-                'text' => $message->text,
+                'text' => $asClaude && $task ? $task->prompt : $message->text,
                 'files' => class_exists(Upload::class)
                     ? Upload::where('source', 'chat')->where('reference', (string) $message->id)->orderBy('id')->pluck('name')->all() : [],
                 'at' => $message->created_at,
@@ -53,9 +55,9 @@ class Transcript
             }
             foreach ($event['message']['content'] ?? [] as $block) {
                 if (($block['type'] ?? null) === 'text' && trim($block['text'] ?? '') !== '') {
-                    $items[] = ['kind' => 'text', 'html' => Str::markdown($this->broker->display($block['text']), ['html_input' => 'escape', 'allow_unsafe_links' => false])];
+                    $items[] = ['kind' => 'text', 'html' => Str::markdown($this->show($block['text']), ['html_input' => 'escape', 'allow_unsafe_links' => false])];
                 } elseif (($block['type'] ?? null) === 'tool_use' && ($label = $this->activity($block['name'] ?? '', $block['input'] ?? []))) {
-                    $items[] = ['kind' => 'activity', 'text' => $this->broker->display($label)];
+                    $items[] = ['kind' => 'activity', 'text' => $this->show($label)];
                 }
             }
         }
@@ -85,10 +87,18 @@ class Transcript
     {
         foreach ($task->events->reverse() as $event) {
             if (($event->event['type'] ?? null) === 'result' && ($event->event['is_error'] ?? false)) {
-                return $this->broker->display((string) ($event->event['result'] ?? __('Claude stopped with an error.')));
+                return $this->show((string) ($event->event['result'] ?? __('Claude stopped with an error.')));
             }
         }
 
-        return $task->error ? $this->broker->display($task->error) : __('Claude stopped with an error.');
+        return $task->error ? $this->show($task->error) : __('Claude stopped with an error.');
+    }
+
+    private bool $asClaude = false;
+
+    /** Pseudonyms back to names for the person reading, unless they asked to see what Claude sees. */
+    private function show(string $text): string
+    {
+        return $this->asClaude ? $text : $this->broker->display($text);
     }
 }

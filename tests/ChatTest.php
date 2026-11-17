@@ -262,4 +262,21 @@ class ChatTest extends TestCase
         $this->actingAs($admin)->post('/administration/chat/module-prompt', ['package' => 'nobody/nothing', 'prompt' => 'x'])->assertNotFound();
         $this->actingAs(User::factory()->create())->post('/administration/chat/module-prompt', ['package' => 'tornado-engine/broker', 'prompt' => 'x'])->assertForbidden();
     }
+
+    public function test_what_claude_sees_shows_pseudonyms_instead_of_names(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Write to Annabel Quince']);
+        $conversation = Conversation::first();
+        $task = HarnessTask::first();
+        $task->events()->create(['event' => ['type' => 'assistant', 'message' => ['content' => [['type' => 'text', 'text' => 'Done for [name '.Pseudonym::for($this->student).'].']]]]]);
+
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")->assertSee('Done for Annabel Quince.')->assertSee('What Claude sees');
+        $this->actingAs($admin)->get("/chat/{$conversation->id}?claude=1")
+            ->assertSee('Write to [name '.Pseudonym::for($this->student).']', false)
+            ->assertSee('Done for [name '.Pseudonym::for($this->student).'].', false)
+            ->assertDontSee('Write to Annabel')
+            ->assertDontSee('Done for Annabel');
+        $this->actingAs($admin)->getJson("/chat/{$conversation->id}/turns?claude=1")->assertJsonMissing(['html' => 'Annabel']);
+    }
 }
