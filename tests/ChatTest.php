@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 use TornadoEngine\Broker\Filter;
 use TornadoEngine\Broker\Models\Person;
-use TornadoEngine\Broker\Models\Rule;
 use TornadoEngine\Broker\Pseudonym;
 use TornadoEngine\Chat\Mcp\ChatServer;
 use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
@@ -28,10 +27,9 @@ class ChatTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Rule::create(['type' => 'ou', 'value' => '/Students', 'sub_ous' => true]);
         Setting::put('broker.refreshed_at', now()->toIso8601String());
-        Person::create(['kind' => 'student', 'email' => $this->student, 'pseudonym' => Pseudonym::for('student', $this->student), 'values' => [[$this->student, 'email'], ['Annabel Quince', 'name']]]);
-        Person::create(['kind' => 'staff', 'email' => 'kim@school.test', 'pseudonym' => Pseudonym::for('staff', 'kim@school.test'), 'values' => [['kim@school.test', 'email']]]);
+        Person::create(['kind' => 'student', 'email' => $this->student, 'pseudonym' => Pseudonym::for($this->student), 'values' => [[$this->student, 'email'], ['Annabel Quince', 'name']]]);
+        Person::create(['kind' => 'staff', 'email' => 'kim@school.test', 'pseudonym' => Pseudonym::for('kim@school.test'), 'values' => [['kim@school.test', 'email']]]);
         app(Filter::class)->forget();
         config(['chat.approve_wait' => 0, 'chat.install_wait' => 0, 'chat.approve_poll' => 0]);
     }
@@ -43,7 +41,7 @@ class ChatTest extends TestCase
 
     private function pseudonym(): string
     {
-        return Pseudonym::for('student', $this->student).'@student';
+        return Pseudonym::for($this->student).'@student';
     }
 
     public function test_messages_reach_claude_only_as_pseudonyms(): void
@@ -76,7 +74,7 @@ class ChatTest extends TestCase
             ['type' => 'assistant', 'message' => ['content' => [
                 ['type' => 'tool_use', 'name' => 'Bash', 'input' => ['command' => 'php artisan test']],
                 ['type' => 'tool_use', 'name' => 'Write', 'input' => ['file_path' => '/workspace/web/modules/notes/composer.json']],
-                ['type' => 'text', 'text' => '**[name '.Pseudonym::for('student', $this->student)."]** is {$this->pseudonym()}. <script>alert(1)</script>"],
+                ['type' => 'text', 'text' => '**[name '.Pseudonym::for($this->student)."]** is {$this->pseudonym()}. <script>alert(1)</script>"],
             ]]],
         ] as $event) {
             $task->events()->create(['event' => $event]);
@@ -110,7 +108,7 @@ class ChatTest extends TestCase
 
     public function test_nothing_is_sent_until_the_broker_is_ready(): void
     {
-        Rule::query()->delete();
+        Setting::put('broker.refreshed_at', null);
 
         $this->actingAs($this->admin())->from('/chat')->post('/chat', ['text' => 'Hello', 'mode' => 'bypassPermissions'])->assertSessionHasErrors('text');
         $this->assertSame(0, HarnessTask::count());

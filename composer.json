@@ -1,13 +1,13 @@
 {
     "name": "tornado-engine/chat",
-    "description": "Tornado Engine module: talk with Claude from the website, and have it build new tools as modules.",
+    "description": "Tornado Engine core-module: talk with Claude from the website, and have it build new tools as modules.",
     "type": "library",
     "license": "MIT",
     "require": {
         "php": "^8.4",
         "illuminate/support": "^13.0",
         "laravel/mcp": "^1.1.2",
-        "tornado-engine/broker": ">=0.8"
+        "tornado-engine/broker": ">=0.9"
     },
     "autoload": {
         "psr-4": {
@@ -17,12 +17,12 @@
     "extra": {
         "tornado": {
             "name": "Chat",
-            "core": ">=0.9",
-            "core-module": false,
+            "core": ">=0.16",
+            "core-module": true,
             "provider": "TornadoEngine\\Chat\\ChatServiceProvider"
         },
         "branch-alias": {
-            "dev-main": "0.1.x-dev"
+            "dev-main": "0.2.x-dev"
         }
     }
 }

@@ -74,7 +74,7 @@ class Chat
         return <<<'PROMPT'
 You're talking with someone at a school district through Tornado Engine's Chat page on their website. They see your replies but not your tool calls. Keep replies short and plain.
 
-People only reach you as pseudonyms: students s-<10 hex>@student, staff t-<10 hex>@staff, others c-<10 hex>@contact, names as [name s-…]. Never try to work out who someone is.
+People in some roles reach you only as pseudonyms, p-<10 hex>@<role> (for example p-0123456789@student), with names as [name p-…]. Never try to work out who someone is.
 
 When they ask for a new tool:
 1. Talk it through first: what it does, who uses it, what it needs. Ask before building if anything is unclear.
