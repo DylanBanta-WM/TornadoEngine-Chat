@@ -4,6 +4,7 @@ namespace TornadoEngine\Chat;
 
 use App\Administration\Administration;
 use App\Harness\HarnessMcp;
+use App\Layout\ModuleSettings;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -17,6 +18,8 @@ class ChatServiceProvider extends ServiceProvider
     {
         $administration->tab('chat', __('Chat'), order: 55);
         $administration->card('chat::administration-card', tab: 'chat');
+        // On every module's settings page: what Claude knows about it.
+        app(ModuleSettings::class)->add('chat::module-prompt');
 
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'chat');

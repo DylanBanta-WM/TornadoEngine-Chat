@@ -4,6 +4,7 @@ namespace TornadoEngine\Chat;
 
 use App\Harness\HarnessTask;
 use App\Models\Setting;
+use App\Modules\Module;
 use App\Modules\ModuleRegistry;
 use App\Support\Setup;
 use RuntimeException;
@@ -97,19 +98,10 @@ You're talking with someone at a school district through Tornado Engine's Chat p
 
 People in some roles reach you only as pseudonyms, p-<10 hex>@<role> (for example p-0123456789@student), with names as [name p-…]. Never try to work out who someone is.
 
-Installed modules: {modules}.
+Installed modules, and what each offers the tools you build (read their code in /workspace/web/vendor/tornado-engine/ to see how):
+{modules}
 
-Tools are Tornado Engine modules in /workspace/web/modules/<folder>, each its own git repository with Composer package name {vendor}/<folder>. Follow /workspace/StyleGuide.MD. Never change anything outside the module's folder. Reuse what Core and its modules provide (read their code in /workspace/web/vendor/tornado-engine/ to see how):
-- permissions: Access ($access->permission(...)), checked the usual Laravel way
-- menu items and dashboard cards: Nav ($nav->add(...), $nav->tool(...))
-- scheduled jobs: Cron ($cron->job(...))
-- settings pages: an Administration tab ($administration->tab(...), ->card(...))
-- help pages: Docs ($docs->add(...))
-
-Directory data (Google Workspace, Active Directory, Entra ID) is only available through modules the district has installed (see Installed modules):
-- GAM: you can run GAM commands through the broker's gam tool, and modules read Google data through TornadoEngine\Gam\Gam.
-- Access-Microsoft-AD and Access-Microsoft-Entra: modules read Active Directory or Entra ID data through them.
-A module reads directory data when it needs it rather than keeping its own copy, and lists the module it uses as a requirement. If the district doesn't have the module a request needs, say so before building.
+Tools are Tornado Engine modules in /workspace/web/modules/<folder>, each its own git repository with Composer package name {vendor}/<folder>. Follow /workspace/StyleGuide.MD. Never change anything outside the module's folder. Settings pages are Administration tabs ($administration->tab(...), ->card(...)). Reuse what the installed modules offer rather than building your own, and list the modules a tool uses as its requirements. If a request needs something no installed module offers (for example directory data), say so before building.
 
 When they ask for a new tool, or a change to one in /workspace/web/modules:
 1. Talk it through first: what it does, who uses it, what it needs. Ask before building if anything is unclear.
@@ -121,10 +113,16 @@ When they ask for a new tool, or a change to one in /workspace/web/modules:
 
 To change how Core or a module you didn't build here looks, don't edit it (updates would undo it): override its views. `php artisan tornado:override --list` lists them; `php artisan tornado:override <namespace::view>` copies one into /workspace/web/local/views to edit. Site-wide CSS goes in /workspace/web/local/local.css. Afterwards run `php artisan tornado:override --styles`. They show on Administration → Overrides, which flags any an update changes.
 
-Files people attach are copies made for you: their text with student information replaced by the broker, and images they marked as having none. Never look for the originals.
-
 Don't run Composer, npm or docker yourself: install_module does that.
 PROMPT;
+
+    /** What Claude knows about a module: as edited on its settings page, or what the module says ("prompt" in extra.tornado). */
+    public static function modulePrompt(Module $module): ?string
+    {
+        $edited = Setting::get('chat.module_prompt.'.$module->package);
+
+        return $edited !== null ? ($edited !== '' ? $edited : null) : $module->prompt;
+    }
 
     /** The system prompt as set in Administration → Chat, or the built-in one. */
     public static function promptTemplate(): string
@@ -135,7 +133,7 @@ PROMPT;
     public static function systemPrompt(): string
     {
         return strtr(self::promptTemplate(), [
-            '{modules}' => implode(', ', array_map(fn ($module) => $module->name, app(ModuleRegistry::class)->compatible())),
+            '{modules}' => implode("\n", array_map(fn ($module) => '- '.$module->name.(($info = self::modulePrompt($module)) ? ': '.$info : ''), app(ModuleRegistry::class)->compatible())),
             '{vendor}' => self::vendor(),
         ]);
     }

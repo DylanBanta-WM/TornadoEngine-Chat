@@ -18,3 +18,8 @@
         </div>
     </form>
 </x-settings-card>
+
+{{-- Modules without a settings page of their own. --}}
+@foreach (array_filter(app(\App\Modules\ModuleRegistry::class)->compatible(), fn ($module) => $module->settings === null) as $module)
+    @include('chat::module-prompt', ['module' => $module])
+@endforeach

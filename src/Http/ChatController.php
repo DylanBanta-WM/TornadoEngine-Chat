@@ -3,6 +3,7 @@
 namespace TornadoEngine\Chat\Http;
 
 use App\Models\Setting;
+use App\Modules\ModuleRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -133,5 +134,15 @@ class ChatController extends Controller
         Setting::put('chat.system_prompt', $text === '' || $text === trim(Chat::DEFAULT_PROMPT) ? null : $text);
 
         return back()->with('chat_status', __('Saved. New messages use it.'));
+    }
+
+    /** What Claude knows about a module (its settings page, or Administration → Chat); Restore default goes back to the module's own. */
+    public function modulePrompt(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['package' => ['required', 'string'], 'prompt' => ['nullable', 'string', 'max:5000']]);
+        abort_unless(isset(app(ModuleRegistry::class)->all()[$data['package']]), 404);
+        Setting::put('chat.module_prompt.'.$data['package'], $request->boolean('restore') ? null : trim((string) ($data['prompt'] ?? '')));
+
+        return back()->with('chat_module_status', $data['package']);
     }
 }

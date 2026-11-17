@@ -11,6 +11,7 @@ use TornadoEngine\Chat\Mcp\ChatServer;
 Mcp::web('/mcp/chat', ChatServer::class)->middleware([OnlyFromHarness::class, AuthenticateHarness::class]);
 
 Route::middleware(['web', 'auth', 'can:administration'])->post('/administration/chat/prompt', [ChatController::class, 'prompt'])->name('chat.prompt');
+Route::middleware(['web', 'auth', 'can:administration'])->post('/administration/chat/module-prompt', [ChatController::class, 'modulePrompt'])->name('chat.module-prompt');
 
 Route::middleware(['web', 'auth', 'can:chat.use'])
     ->prefix('chat')

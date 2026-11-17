@@ -225,17 +225,17 @@ class ChatTest extends TestCase
     public function test_the_admin_can_change_the_system_prompt(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->get('/administration/chat')->assertOk()->assertSee('Installed modules: {modules}.')->assertDontSee('Restore default');
+        $this->actingAs($admin)->get('/administration/chat')->assertOk()->assertSee('{modules}')->assertDontSee('Restore default');
         $this->actingAs(User::factory()->create())->post('/administration/chat/prompt', ['prompt' => 'Nope'])->assertForbidden();
 
         $this->actingAs($admin)->post('/administration/chat/prompt', ['prompt' => 'Be brief. Modules: {modules}. Vendor: {vendor}.']);
-        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.$/', Chat::systemPrompt());
+        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.$/s', Chat::systemPrompt());
         $this->actingAs($admin)->post('/chat', ['text' => 'Hello']);
         $this->assertStringStartsWith('Be brief.', HarnessTask::latest('id')->first()->system_prompt);
 
         $this->actingAs($admin)->post('/administration/chat/prompt', ['restore' => 1]);
         $this->assertNull(Setting::get('chat.system_prompt'));
-        $this->assertStringContainsString('Installed modules:', Chat::systemPrompt());
+        $this->assertStringContainsString('Installed modules, and what each offers', Chat::systemPrompt());
     }
 
     public function test_attaching_files_asks_about_student_information(): void
@@ -243,5 +243,23 @@ class ChatTest extends TestCase
         $this->actingAs($this->admin())->get('/chat')
             ->assertSee('Does this file contain student information?')
             ->assertSee('Files with student information go through the broker, which tries to remove it before Claude reads them.');
+    }
+
+    public function test_modules_tell_claude_what_they_offer_and_admins_can_edit_it_on_their_settings_page(): void
+    {
+        $admin = $this->admin();
+        // Broker has no text of its own: it's listed by name.
+        $this->assertStringContainsString("\n- Broker\n", Chat::systemPrompt());
+
+        $this->actingAs($admin)->get('/administration/broker')->assertSee('What Claude knows about Broker');
+        $this->actingAs($admin)->post('/administration/chat/module-prompt', ['package' => 'tornado-engine/broker', 'prompt' => 'Edited for this district.']);
+        $this->assertStringContainsString("\n- Broker: Edited for this district.\n", Chat::systemPrompt());
+
+        $this->actingAs($admin)->post('/administration/chat/module-prompt', ['package' => 'tornado-engine/broker', 'restore' => 1]);
+        $this->assertStringContainsString("\n- Broker\n", Chat::systemPrompt());
+        $this->assertStringContainsString('- GAM: Google Workspace: you can run GAM commands', Chat::systemPrompt(), "a module's own text");
+
+        $this->actingAs($admin)->post('/administration/chat/module-prompt', ['package' => 'nobody/nothing', 'prompt' => 'x'])->assertNotFound();
+        $this->actingAs(User::factory()->create())->post('/administration/chat/module-prompt', ['package' => 'tornado-engine/broker', 'prompt' => 'x'])->assertForbidden();
     }
 }
