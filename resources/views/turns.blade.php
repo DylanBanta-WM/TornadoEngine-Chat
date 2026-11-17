@@ -4,7 +4,7 @@
 
 @foreach ($turns as $turn)
     <div class="flex justify-end">
-        <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-lg bg-indigo-600 px-4 py-2 text-white">{{ $turn['text'] }}</div>
+        <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-gray-100 dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ $turn['text'] }}</div>
     </div>
 
     <div class="space-y-2">

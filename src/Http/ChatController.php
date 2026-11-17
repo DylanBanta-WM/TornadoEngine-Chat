@@ -18,8 +18,11 @@ class ChatController extends Controller
 {
     public function index(Request $request): View
     {
-        return view('chat::index', [
+        return view('chat::page', [
             'conversations' => Conversation::where('user_id', $request->user()->id)->latest('updated_at')->get(),
+            'conversation' => null,
+            'turns' => [],
+            'running' => false,
         ]);
     }
 
@@ -43,11 +46,11 @@ class ChatController extends Controller
     {
         $this->own($request, $conversation);
 
-        return view('chat::show', [
+        return view('chat::page', [
             'conversation' => $conversation,
             'turns' => $transcript->turns($conversation),
             'running' => $conversation->running(),
-            'conversations' => Conversation::where('user_id', $request->user()->id)->latest('updated_at')->take(20)->get(),
+            'conversations' => Conversation::where('user_id', $request->user()->id)->latest('updated_at')->get(),
         ]);
     }
 
