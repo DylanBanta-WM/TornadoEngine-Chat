@@ -18,6 +18,7 @@ use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
 use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
 use TornadoEngine\Chat\Models\Approval;
 use TornadoEngine\Chat\Models\Conversation;
+use TornadoEngine\Cron\Cron;
 
 class ChatTest extends TestCase
 {
@@ -49,14 +50,14 @@ class ChatTest extends TestCase
     {
         $admin = $this->admin();
 
-        $this->actingAs($admin)->post('/chat', ['text' => "Make a tool to email {$this->student}'s teacher about Annabel Quince", 'mode' => 'plan'])
+        $this->actingAs($admin)->post('/chat', ['text' => "Make a tool to email {$this->student}'s teacher about Annabel Quince"])
             ->assertRedirect();
 
         $task = HarnessTask::sole();
         $this->assertStringNotContainsString($this->student, $task->prompt);
         $this->assertStringNotContainsString('Annabel', $task->prompt);
         $this->assertStringContainsString($this->pseudonym(), $task->prompt);
-        $this->assertSame(['chat', 'plan', 'mcp__tornado-chat__approve'], [$task->source, $task->permission_mode, $task->permission_prompt_tool]);
+        $this->assertSame(['chat', 'auto', 'mcp__tornado-chat__approve'], [$task->source, $task->permission_mode, $task->permission_prompt_tool]);
         $this->assertStringContainsString('StyleGuide.MD', $task->system_prompt);
 
         // The person sees what they wrote.
@@ -67,7 +68,7 @@ class ChatTest extends TestCase
     public function test_claudes_answer_shows_real_people_and_what_it_did(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->post('/chat', ['text' => 'Hello', 'mode' => 'bypassPermissions']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Hello']);
         $task = HarnessTask::sole();
         $task->update(['status' => 'done', 'result_session_id' => 'session-1']);
         foreach ([
@@ -90,17 +91,17 @@ class ChatTest extends TestCase
             ->assertDontSee('<script>alert(1)</script>', false);
 
         // The next message continues the same Claude Code session.
-        $this->actingAs($admin)->post("/chat/{$conversation->id}/messages", ['text' => 'Thanks', 'mode' => 'auto']);
+        $this->actingAs($admin)->post("/chat/{$conversation->id}/messages", ['text' => 'Thanks']);
         $this->assertSame(['session-1', 'auto'], [HarnessTask::latest('id')->first()->session_id, HarnessTask::latest('id')->first()->permission_mode]);
     }
 
     public function test_one_message_at_a_time_and_it_can_be_stopped(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->post('/chat', ['text' => 'Build something', 'mode' => 'bypassPermissions']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Build something']);
         $conversation = Conversation::sole();
 
-        $this->actingAs($admin)->from("/chat/{$conversation->id}")->post("/chat/{$conversation->id}/messages", ['text' => 'Again', 'mode' => 'bypassPermissions'])
+        $this->actingAs($admin)->from("/chat/{$conversation->id}")->post("/chat/{$conversation->id}/messages", ['text' => 'Again'])
             ->assertSessionHasErrors(['text' => 'Claude is still working on your last message.']);
 
         $this->actingAs($admin)->post("/chat/{$conversation->id}/stop");
@@ -111,7 +112,7 @@ class ChatTest extends TestCase
     {
         Setting::put('broker.refreshed_at', null);
 
-        $this->actingAs($this->admin())->from('/chat')->post('/chat', ['text' => 'Hello', 'mode' => 'bypassPermissions'])->assertSessionHasErrors('text');
+        $this->actingAs($this->admin())->from('/chat')->post('/chat', ['text' => 'Hello'])->assertSessionHasErrors('text');
         $this->assertSame(0, HarnessTask::count());
         $this->assertSame(0, Conversation::count());
     }
@@ -119,7 +120,7 @@ class ChatTest extends TestCase
     public function test_permission_prompts_show_in_the_chat(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->post('/chat', ['text' => 'Build it', 'mode' => 'manual']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Build it']);
         HarnessTask::sole()->update(['status' => 'running']);
 
         // Nobody answers in time: denied.
@@ -135,7 +136,7 @@ class ChatTest extends TestCase
     public function test_people_answer_prompts_with_allow_or_deny(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->post('/chat', ['text' => 'Build it', 'mode' => 'manual']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Build it']);
         $conversation = Conversation::sole();
         $approval = Approval::create(['chat_conversation_id' => $conversation->id, 'harness_task_id' => HarnessTask::sole()->id, 'tool' => 'Bash', 'input' => ['command' => 'php artisan test']]);
 
@@ -165,7 +166,7 @@ class ChatTest extends TestCase
     public function test_only_people_with_the_permission_and_only_their_own_chats(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->post('/chat', ['text' => 'Mine', 'mode' => 'bypassPermissions']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Mine']);
         $conversation = Conversation::sole();
 
         $this->actingAs(User::factory()->create())->get('/chat')->assertForbidden();
@@ -184,5 +185,25 @@ class ChatTest extends TestCase
 
         Setting::put('site.url', null);
         $this->assertSame('local', Chat::vendor());
+    }
+
+    public function test_chats_are_deleted_14_days_after_they_were_last_used_unless_saved(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Old and temporary']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Old but saved']);
+        $this->actingAs($admin)->post('/chat', ['text' => 'Recent']);
+        [$old, $saved, $recent] = Conversation::orderBy('id')->get()->all();
+
+        $this->actingAs($admin)->post("/chat/{$saved->id}/save");
+        $this->assertTrue($saved->fresh()->saved);
+        $this->actingAs($admin)->get('/chat')->assertSeeInOrder(['History', 'Saved'])->assertDontSee('<select', false);
+        $this->actingAs($admin)->get("/chat/{$saved->id}")->assertSee('Unsave');
+
+        Conversation::whereKey([$old->id, $saved->id])->update(['updated_at' => now()->subDays(15)]);
+        app(Cron::class)->run(app(Cron::class)->find('chat.prune'));
+
+        $this->assertSame([$saved->id, $recent->id], Conversation::orderBy('id')->pluck('id')->all());
+        $this->assertSame(0, HarnessTask::where('reference', (string) $old->id)->count(), 'what Claude did goes too');
     }
 }

@@ -1,12 +1,18 @@
 <x-admin-layout :title="$conversation->title">
     <div class="flex items-center justify-between gap-3 px-4 sm:px-0">
-        <a href="{{ route('chat.index') }}" class="inline-flex min-h-11 items-center font-medium text-indigo-600 dark:text-indigo-400 underline">{{ __('All chats') }}</a>
-        @if ($running)
-            <form method="POST" action="{{ route('chat.stop', $conversation) }}">
+        <a href="{{ route('chat.index') }}" class="inline-flex min-h-11 items-center font-medium text-indigo-600 dark:text-indigo-400 underline">{{ __('History') }}</a>
+        <div class="flex gap-3">
+            @if ($running)
+                <form method="POST" action="{{ route('chat.stop', $conversation) }}">
+                    @csrf
+                    <x-secondary-button type="submit">{{ __('Stop') }}</x-secondary-button>
+                </form>
+            @endif
+            <form method="POST" action="{{ route('chat.save', $conversation) }}">
                 @csrf
-                <x-secondary-button type="submit">{{ __('Stop') }}</x-secondary-button>
+                <x-secondary-button type="submit">{{ $conversation->saved ? __('Unsave') : __('Save') }}</x-secondary-button>
             </form>
-        @endif
+        </div>
     </div>
 
     <section class="bg-white dark:bg-gray-800 shadow-sm sm:rounded-lg p-4 sm:p-6"
@@ -27,6 +33,6 @@
     </section>
 
     <x-settings-card :title="__('Reply')">
-        @include('chat::composer', ['action' => route('chat.send', $conversation), 'mode' => $conversation->mode, 'running' => $running])
+        @include('chat::composer', ['action' => route('chat.send', $conversation), 'running' => $running])
     </x-settings-card>
 </x-admin-layout>

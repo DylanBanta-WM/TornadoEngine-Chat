@@ -2,6 +2,7 @@
 
 namespace TornadoEngine\Chat\Models;
 
+use App\Harness\HarnessTask;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +12,29 @@ class Conversation extends Model
 {
     protected $table = 'chat_conversations';
 
-    protected $fillable = ['user_id', 'title', 'session_id', 'mode'];
+    /** Days a chat is kept after it was last used, unless it's saved. */
+    public const KEEP_DAYS = 14;
+
+    protected $fillable = ['user_id', 'title', 'session_id', 'mode', 'saved'];
+
+    protected function casts(): array
+    {
+        return ['saved' => 'boolean'];
+    }
+
+    /**
+     * Deletes temporary chats not used for KEEP_DAYS days, with what Claude did in them.
+     */
+    public static function prune(): int
+    {
+        $old = self::where('saved', false)->where('updated_at', '<', now()->subDays(self::KEEP_DAYS))->get();
+        foreach ($old as $conversation) {
+            HarnessTask::where('source', 'chat')->where('reference', (string) $conversation->id)->delete();
+            $conversation->delete();
+        }
+
+        return $old->count();
+    }
 
     public function user(): BelongsTo
     {

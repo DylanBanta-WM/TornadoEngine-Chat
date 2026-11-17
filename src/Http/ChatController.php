@@ -29,7 +29,7 @@ class ChatController extends Controller
         $conversation = Conversation::create(['user_id' => $request->user()->id, 'title' => Str::limit($data['text'], 60)]);
 
         try {
-            $chat->send($conversation, $data['text'], $data['mode']);
+            $chat->send($conversation, $data['text']);
         } catch (RuntimeException $e) {
             $conversation->delete();
 
@@ -68,13 +68,23 @@ class ChatController extends Controller
         $data = $this->message($request);
 
         try {
-            $chat->send($conversation, $data['text'], $data['mode']);
+            $chat->send($conversation, $data['text']);
             $conversation->touch();
         } catch (RuntimeException $e) {
             return back()->withErrors(['text' => $e->getMessage()])->withInput();
         }
 
         return redirect()->route('chat.show', $conversation);
+    }
+
+    /** Keeps a chat (saved), or lets it be deleted 14 days after it was last used. */
+    public function save(Request $request, Conversation $conversation): RedirectResponse
+    {
+        $this->own($request, $conversation);
+        $conversation->timestamps = false;
+        $conversation->update(['saved' => ! $conversation->saved]);
+
+        return back();
     }
 
     public function stop(Request $request, Conversation $conversation, Chat $chat): RedirectResponse
@@ -97,12 +107,11 @@ class ChatController extends Controller
         return $request->expectsJson() ? response()->json(['status' => $approval->status]) : redirect()->route('chat.show', $conversation);
     }
 
-    /** @return array{text: string, mode: string} */
+    /** @return array{text: string} */
     private function message(Request $request): array
     {
         return $request->validate([
             'text' => ['required', 'string', 'max:20000'],
-            'mode' => ['required', 'in:'.implode(',', array_keys(Chat::MODES))],
         ]);
     }
 

@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use TornadoEngine\Access\Access;
+use TornadoEngine\Cron\Cron;
 use TornadoEngine\Nav\Nav;
 
 class ChatServiceProvider extends ServiceProvider
@@ -18,6 +19,11 @@ class ChatServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');
 
         $mcp->server('tornado-chat', '/mcp/chat');
+
+        $this->callAfterResolving(Cron::class, function ($cron) {
+            $cron->job('chat.prune', __('Delete old chats'), fn () => trans_choice('Deleted :count chat.|Deleted :count chats.', $count = Models\Conversation::prune(), ['count' => $count]),
+                schedule: '15 3 * * *', description: __('Deletes chats not used for 14 days, unless they\'re saved.'));
+        });
 
         // The setup admin; with the Access module, roles can be given it.
         Gate::define('chat.use', fn (User $user) => (bool) $user->is_admin);

@@ -16,20 +16,14 @@ use TornadoEngine\Chat\Models\Message;
  */
 class Chat
 {
-    /** Claude Code's permission modes, as Claude Code names them. */
-    public const MODES = [
-        'bypassPermissions' => 'Bypass permissions',
-        'auto' => 'Auto mode',
-        'acceptEdits' => 'Accept edits',
-        'plan' => 'Plan mode',
-        'manual' => 'Manual',
-    ];
+    /** Claude Code's auto mode: it decides what's safe, and asks (Allow or Deny) about the rest. */
+    public const MODE = 'auto';
 
     public const PROMPT_TOOL = 'mcp__tornado-chat__approve';
 
     public function __construct(private Broker $broker) {}
 
-    public function send(Conversation $conversation, string $text, string $mode): Message
+    public function send(Conversation $conversation, string $text): Message
     {
         if ($reason = $this->broker->notReady()) {
             throw new RuntimeException($reason);
@@ -38,13 +32,12 @@ class Chat
             throw new RuntimeException(__('Claude is still working on your last message.'));
         }
 
-        $mode = array_key_exists($mode, self::MODES) ? $mode : 'bypassPermissions';
-        $conversation->update(['mode' => $mode]);
+        $conversation->touch();
 
         $task = HarnessTask::queue('chat', $this->broker->filter($text),
             reference: (string) $conversation->id,
             session: $this->session($conversation),
-            mode: $mode,
+            mode: self::MODE,
             systemPrompt: self::systemPrompt(),
             permissionPromptTool: self::PROMPT_TOOL,
         );

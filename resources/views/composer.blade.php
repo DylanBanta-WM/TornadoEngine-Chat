@@ -1,4 +1,4 @@
-{{-- The message box. $action is where it posts; $mode the selected mode. --}}
+{{-- The message box. $action is where it posts. --}}
 <form method="POST" action="{{ $action }}" class="space-y-3">
     @csrf
     <label for="chat-text" class="sr-only">{{ __('Message') }}</label>
@@ -6,15 +6,7 @@
               x-on:keydown.enter="if (! $event.shiftKey && ! window.matchMedia('(pointer: coarse)').matches) { $event.preventDefault(); $el.form.requestSubmit() }"
               class="block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-base focus:border-indigo-500 focus:ring-indigo-500">{{ old('text') }}</textarea>
     <x-input-error :messages="$errors->get('text')" />
-    <div class="flex flex-wrap items-center justify-between gap-3">
-        <label class="flex items-center gap-2">
-            <span class="sr-only">{{ __('Mode') }}</span>
-            <select name="mode" class="min-h-11 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-base focus:border-indigo-500 focus:ring-indigo-500">
-                @foreach (\TornadoEngine\Chat\Chat::MODES as $value => $label)
-                    <option value="{{ $value }}" @selected(old('mode', $mode) === $value)>{{ __($label) }}</option>
-                @endforeach
-            </select>
-        </label>
+    <div class="flex justify-end">
         <x-primary-button :disabled="$running ?? false">{{ __('Send') }}</x-primary-button>
     </div>
 </form>
