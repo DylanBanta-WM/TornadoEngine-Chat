@@ -3,6 +3,7 @@
 namespace TornadoEngine\Chat;
 
 use App\Harness\HarnessTask;
+use App\Models\Setting;
 use App\Modules\ModuleRegistry;
 use App\Support\Setup;
 use RuntimeException;
@@ -78,24 +79,20 @@ class Chat
         return $name !== '' ? $name : 'local';
     }
 
-    public static function systemPrompt(): string
-    {
-        $vendor = self::vendor();
-        $modules = implode(', ', array_map(fn ($module) => $module->name, app(ModuleRegistry::class)->compatible()));
-
-        return <<<PROMPT
+    /** The built-in system prompt; {modules} and {vendor} are filled in when a chat starts. */
+    public const DEFAULT_PROMPT = <<<'PROMPT'
 You're talking with someone at a school district through Tornado Engine's Chat page on their website. They see your replies but not your tool calls. Keep replies short and plain.
 
 People in some roles reach you only as pseudonyms, p-<10 hex>@<role> (for example p-0123456789@student), with names as [name p-…]. Never try to work out who someone is.
 
-Installed modules: {$modules}.
+Installed modules: {modules}.
 
-Tools are Tornado Engine modules in /workspace/web/modules/<folder>, each its own git repository with Composer package name {$vendor}/<folder>. Follow /workspace/StyleGuide.MD. Never change anything outside the module's folder. Reuse what Core and its modules provide (read their code in /workspace/web/vendor/tornado-engine/ to see how):
-- permissions: Access (\$access->permission(...)), checked the usual Laravel way
-- menu items and dashboard cards: Nav (\$nav->add(...), \$nav->tool(...))
-- scheduled jobs: Cron (\$cron->job(...))
-- settings pages: an Administration tab (\$administration->tab(...), ->card(...))
-- help pages: Docs (\$docs->add(...))
+Tools are Tornado Engine modules in /workspace/web/modules/<folder>, each its own git repository with Composer package name {vendor}/<folder>. Follow /workspace/StyleGuide.MD. Never change anything outside the module's folder. Reuse what Core and its modules provide (read their code in /workspace/web/vendor/tornado-engine/ to see how):
+- permissions: Access ($access->permission(...)), checked the usual Laravel way
+- menu items and dashboard cards: Nav ($nav->add(...), $nav->tool(...))
+- scheduled jobs: Cron ($cron->job(...))
+- settings pages: an Administration tab ($administration->tab(...), ->card(...))
+- help pages: Docs ($docs->add(...))
 
 Google and Microsoft data: run GAM yourself through the broker's gam tool. A module that needs directory data reads it through the GAM module (TornadoEngine\Gam\Gam), Access-Microsoft-AD or Access-Microsoft-Entra when it needs it, rather than keeping its own copy.
 
@@ -109,5 +106,18 @@ When they ask for a new tool, or a change to one in /workspace/web/modules:
 
 Don't run Composer, npm or docker yourself: install_module does that.
 PROMPT;
+
+    /** The system prompt as set in Administration → Chat, or the built-in one. */
+    public static function promptTemplate(): string
+    {
+        return Setting::get('chat.system_prompt') ?: self::DEFAULT_PROMPT;
+    }
+
+    public static function systemPrompt(): string
+    {
+        return strtr(self::promptTemplate(), [
+            '{modules}' => implode(', ', array_map(fn ($module) => $module->name, app(ModuleRegistry::class)->compatible())),
+            '{vendor}' => self::vendor(),
+        ]);
     }
 }

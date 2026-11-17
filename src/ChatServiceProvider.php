@@ -2,6 +2,7 @@
 
 namespace TornadoEngine\Chat;
 
+use App\Administration\Administration;
 use App\Harness\HarnessMcp;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
@@ -12,8 +13,11 @@ use TornadoEngine\Nav\Nav;
 
 class ChatServiceProvider extends ServiceProvider
 {
-    public function boot(HarnessMcp $mcp): void
+    public function boot(HarnessMcp $mcp, Administration $administration): void
     {
+        $administration->tab('chat', __('Chat'), order: 55);
+        $administration->card('chat::administration-card', tab: 'chat');
+
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'chat');
         $this->loadRoutesFrom(__DIR__.'/../routes/chat.php');

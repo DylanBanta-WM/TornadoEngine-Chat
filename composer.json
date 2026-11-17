@@ -19,10 +19,11 @@
             "name": "Chat",
             "core": ">=0.16",
             "core-module": true,
-            "provider": "TornadoEngine\\Chat\\ChatServiceProvider"
+            "provider": "TornadoEngine\\Chat\\ChatServiceProvider",
+            "settings": "/administration/chat"
         },
         "branch-alias": {
-            "dev-main": "0.5.x-dev"
+            "dev-main": "0.6.x-dev"
         }
     }
 }

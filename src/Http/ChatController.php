@@ -2,6 +2,7 @@
 
 namespace TornadoEngine\Chat\Http;
 
+use App\Models\Setting;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -121,5 +122,14 @@ class ChatController extends Controller
     private function own(Request $request, Conversation $conversation): void
     {
         abort_unless($conversation->user_id === $request->user()->id, 404);
+    }
+
+    /** Administration → Chat: the system prompt; empty or Restore default goes back to the built-in one. */
+    public function prompt(Request $request): RedirectResponse
+    {
+        $text = $request->boolean('restore') ? '' : trim((string) $request->validate(['prompt' => ['nullable', 'string', 'max:20000']])['prompt']);
+        Setting::put('chat.system_prompt', $text === '' || $text === trim(Chat::DEFAULT_PROMPT) ? null : $text);
+
+        return back()->with('chat_status', __('Saved. New messages use it.'));
     }
 }
