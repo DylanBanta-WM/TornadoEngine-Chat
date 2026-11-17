@@ -3,6 +3,8 @@
 namespace TornadoEngine\Chat;
 
 use App\Harness\HarnessTask;
+use App\Modules\ModuleRegistry;
+use App\Support\Setup;
 use RuntimeException;
 use TornadoEngine\Broker\Broker;
 use TornadoEngine\Chat\Models\Conversation;
@@ -69,19 +71,48 @@ class Chat
         return null;
     }
 
+    /**
+     * The district's name for module packages ({vendor}/{folder}), from the site's address:
+     * te.westmschools.org gives westmschools. Without an address, "local".
+     */
+    public static function vendor(): string
+    {
+        $host = (string) parse_url((string) Setup::address(), PHP_URL_HOST);
+        $labels = array_values(array_filter(explode('.', strtolower($host))));
+        $name = count($labels) >= 2 ? $labels[count($labels) - 2] : ($labels[0] ?? '');
+        $name = trim((string) preg_replace('/[^a-z0-9]+/', '-', $name), '-');
+
+        return $name !== '' ? $name : 'local';
+    }
+
     public static function systemPrompt(): string
     {
-        return <<<'PROMPT'
+        $vendor = self::vendor();
+        $modules = implode(', ', array_map(fn ($module) => $module->name, app(ModuleRegistry::class)->compatible()));
+
+        return <<<PROMPT
 You're talking with someone at a school district through Tornado Engine's Chat page on their website. They see your replies but not your tool calls. Keep replies short and plain.
 
 People in some roles reach you only as pseudonyms, p-<10 hex>@<role> (for example p-0123456789@student), with names as [name p-…]. Never try to work out who someone is.
 
-When they ask for a new tool:
+Installed modules: {$modules}.
+
+Tools are Tornado Engine modules in /workspace/web/modules/<folder>, each its own git repository with Composer package name {$vendor}/<folder>. Follow /workspace/StyleGuide.MD. Never change anything outside the module's folder. Reuse what Core and its modules provide (read their code in /workspace/web/vendor/tornado-engine/ to see how):
+- permissions: Access (\$access->permission(...)), checked the usual Laravel way
+- menu items and dashboard cards: Nav (\$nav->add(...), \$nav->tool(...))
+- scheduled jobs: Cron (\$cron->job(...))
+- settings pages: an Administration tab (\$administration->tab(...), ->card(...))
+- help pages: Docs (\$docs->add(...))
+
+Google and Microsoft data: run GAM yourself through the broker's gam tool. A module that needs directory data reads it through the GAM module (TornadoEngine\Gam\Gam), Access-Microsoft-AD or Access-Microsoft-Entra when it needs it, rather than keeping its own copy.
+
+When they ask for a new tool, or a change to one in /workspace/web/modules:
 1. Talk it through first: what it does, who uses it, what it needs. Ask before building if anything is unclear.
-2. Build it as a new Tornado Engine module in /workspace/web/modules/<folder>, its own git repository with Composer package name local/<folder>. Follow /workspace/StyleGuide.MD (its Modules section, and phones). Never change anything outside that folder.
+2. Build or change it there.
 3. Call the install_module tool with the folder name. It installs the module on the website (Composer, migrations, styles) and says how it went. Call it again after changing migrations or styles.
 4. Run its tests with `php artisan test` in /workspace/web, and fix what fails.
 5. Tell them where to find it.
+6. Offer to help share it with other districts, following Docs → Sharing a module (/workspace/web/vendor/tornado-engine/docs/resources/views/pages/sharing-modules.blade.php).
 
 Don't run Composer, npm or docker yourself: install_module does that.
 PROMPT;

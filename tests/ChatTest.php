@@ -12,6 +12,7 @@ use Tests\TestCase;
 use TornadoEngine\Broker\Filter;
 use TornadoEngine\Broker\Models\Person;
 use TornadoEngine\Broker\Pseudonym;
+use TornadoEngine\Chat\Chat;
 use TornadoEngine\Chat\Mcp\ChatServer;
 use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
 use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
@@ -169,5 +170,19 @@ class ChatTest extends TestCase
 
         $this->actingAs(User::factory()->create())->get('/chat')->assertForbidden();
         $this->actingAs($this->admin())->get("/chat/{$conversation->id}")->assertNotFound();
+    }
+
+    public function test_the_system_prompt_names_the_districts_packages_and_installed_modules(): void
+    {
+        Setting::put('site.url', 'https://te.westmschools.com');
+        $prompt = Chat::systemPrompt();
+
+        $this->assertStringContainsString('Composer package name westmschools/<folder>', $prompt);
+        $this->assertStringContainsString('Broker', $prompt);
+        $this->assertStringContainsString('$cron->job(...)', $prompt);
+        $this->assertStringContainsString('Sharing a module', $prompt);
+
+        Setting::put('site.url', null);
+        $this->assertSame('local', Chat::vendor());
     }
 }
