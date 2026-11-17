@@ -33,7 +33,7 @@ class ChatController extends Controller
         $conversation = Conversation::create(['user_id' => $request->user()->id, 'title' => Str::limit($data['text'], 60)]);
 
         try {
-            $chat->send($conversation, $data['text']);
+            $chat->send($conversation, $data['text'], $data['uploads'] ?? []);
         } catch (RuntimeException $e) {
             $conversation->delete();
 
@@ -72,7 +72,7 @@ class ChatController extends Controller
         $data = $this->message($request);
 
         try {
-            $chat->send($conversation, $data['text']);
+            $chat->send($conversation, $data['text'], $data['uploads'] ?? []);
             $conversation->touch();
         } catch (RuntimeException $e) {
             return back()->withErrors(['text' => $e->getMessage()])->withInput();
@@ -116,6 +116,8 @@ class ChatController extends Controller
     {
         return $request->validate([
             'text' => ['required', 'string', 'max:20000'],
+            'uploads' => ['nullable', 'array', 'max:20'],
+            'uploads.*' => ['integer'],
         ]);
     }
 

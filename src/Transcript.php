@@ -7,6 +7,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use TornadoEngine\Broker\Broker;
 use TornadoEngine\Chat\Models\Conversation;
+use TornadoEngine\Uploads\Models\Upload;
 
 /**
  * A conversation for the page: what people wrote, and what Claude answered and did, with
@@ -28,6 +29,8 @@ class Transcript
             $task = $message->task;
             $turns[] = [
                 'text' => $message->text,
+                'files' => class_exists(Upload::class)
+                    ? Upload::where('source', 'chat')->where('reference', (string) $message->id)->orderBy('id')->pluck('name')->all() : [],
                 'at' => $message->created_at,
                 'status' => $task?->status,
                 'error' => $task?->status === 'failed' ? $this->failure($task) : null,

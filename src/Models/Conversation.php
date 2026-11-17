@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use TornadoEngine\Uploads\Uploads;
 
 class Conversation extends Model
 {
@@ -30,6 +31,9 @@ class Conversation extends Model
         $old = self::where('saved', false)->where('updated_at', '<', now()->subDays(self::KEEP_DAYS))->get();
         foreach ($old as $conversation) {
             HarnessTask::where('source', 'chat')->where('reference', (string) $conversation->id)->delete();
+            if (class_exists(Uploads::class)) {
+                app(Uploads::class)->forget('chat', $conversation->messages()->pluck('id')->all());
+            }
             $conversation->delete();
         }
 

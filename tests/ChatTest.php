@@ -197,7 +197,7 @@ class ChatTest extends TestCase
 
         $this->actingAs($admin)->post("/chat/{$saved->id}/save");
         $this->assertTrue($saved->fresh()->saved);
-        $this->actingAs($admin)->get('/chat')->assertSeeInOrder(['History', 'Saved'])->assertDontSee('<select', false);
+        $this->actingAs($admin)->get('/chat')->assertSeeInOrder(['History', 'Saved'])->assertDontSee('name="mode"', false);
         $this->actingAs($admin)->get("/chat/{$saved->id}")->assertSee('Unsave');
 
         Conversation::whereKey([$old->id, $saved->id])->update(['updated_at' => now()->subDays(15)]);

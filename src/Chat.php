@@ -10,6 +10,7 @@ use RuntimeException;
 use TornadoEngine\Broker\Broker;
 use TornadoEngine\Chat\Models\Conversation;
 use TornadoEngine\Chat\Models\Message;
+use TornadoEngine\Uploads\Models\Upload;
 
 /**
  * Sends people's messages to Claude Code in the harness. Every message goes through the broker
@@ -24,7 +25,8 @@ class Chat
 
     public function __construct(private Broker $broker) {}
 
-    public function send(Conversation $conversation, string $text): Message
+    /** @param  list<int>  $uploads  files they attached (the Uploads module), by id */
+    public function send(Conversation $conversation, string $text, array $uploads = []): Message
     {
         if ($reason = $this->broker->notReady()) {
             throw new RuntimeException($reason);
@@ -35,7 +37,14 @@ class Chat
 
         $conversation->touch();
 
-        $task = HarnessTask::queue('chat', $this->broker->filter($text),
+        $attached = $uploads && class_exists(Upload::class)
+            ? Upload::whereIn('id', $uploads)->where('user_id', $conversation->user_id)->whereNull('source')->orderBy('id')->get() : collect();
+        $prompt = $this->broker->filter($text);
+        if ($attached->isNotEmpty()) {
+            $prompt .= "\n\nFiles they attached (copies for you, read them with the Read tool):\n".$attached->map->describeForClaude()->implode("\n");
+        }
+
+        $task = HarnessTask::queue('chat', $prompt,
             reference: (string) $conversation->id,
             session: $this->session($conversation),
             mode: self::MODE,
@@ -43,7 +52,10 @@ class Chat
             permissionPromptTool: self::PROMPT_TOOL,
         );
 
-        return $conversation->messages()->create(['text' => $text, 'harness_task_id' => $task->id]);
+        $message = $conversation->messages()->create(['text' => $text, 'harness_task_id' => $task->id]);
+        $attached->each->update(['source' => 'chat', 'reference' => (string) $message->id]);
+
+        return $message;
     }
 
     public function stop(Conversation $conversation): void
@@ -105,6 +117,8 @@ When they ask for a new tool, or a change to one in /workspace/web/modules:
 6. Offer to help share it with other districts, following Docs → Sharing a module (/workspace/web/vendor/tornado-engine/docs/resources/views/pages/sharing-modules.blade.php).
 
 To change how Core or a module you didn't build here looks, don't edit it (updates would undo it): override its views. `php artisan tornado:override --list` lists them; `php artisan tornado:override <namespace::view>` copies one into /workspace/web/local/views to edit. Site-wide CSS goes in /workspace/web/local/local.css. Afterwards run `php artisan tornado:override --styles`. They show on Administration → Overrides, which flags any an update changes.
+
+Files people attach are copies made for you: their text with student information replaced by the broker, and images they marked as having none. Never look for the originals.
 
 Don't run Composer, npm or docker yourself: install_module does that.
 PROMPT;
