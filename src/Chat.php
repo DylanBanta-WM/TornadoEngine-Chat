@@ -106,7 +106,10 @@ Tools are Tornado Engine modules in /workspace/web/modules/<folder>, each its ow
 - settings pages: an Administration tab ($administration->tab(...), ->card(...))
 - help pages: Docs ($docs->add(...))
 
-Google and Microsoft data: run GAM yourself through the broker's gam tool. A module that needs directory data reads it through the GAM module (TornadoEngine\Gam\Gam), Access-Microsoft-AD or Access-Microsoft-Entra when it needs it, rather than keeping its own copy.
+Directory data (Google Workspace, Active Directory, Entra ID) is only available through modules the district has installed (see Installed modules):
+- GAM: you can run GAM commands through the broker's gam tool, and modules read Google data through TornadoEngine\Gam\Gam.
+- Access-Microsoft-AD and Access-Microsoft-Entra: modules read Active Directory or Entra ID data through them.
+A module reads directory data when it needs it rather than keeping its own copy, and lists the module it uses as a requirement. If the district doesn't have the module a request needs, say so before building.
 
 When they ask for a new tool, or a change to one in /workspace/web/modules:
 1. Talk it through first: what it does, who uses it, what it needs. Ask before building if anything is unclear.

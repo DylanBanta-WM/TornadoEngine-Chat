@@ -1,6 +1,6 @@
 @php($custom = \App\Models\Setting::get('chat.system_prompt') !== null)
 
-<x-settings-card :title="__('System prompt')">
+<x-settings-card wide :title="__('System prompt')">
     @if (session('chat_status'))
         <p class="text-green-700 dark:text-green-400">{{ session('chat_status') }}</p>
     @endif

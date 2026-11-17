@@ -5,7 +5,8 @@
       x-data="{
           files: [],
           pending: [],
-          get busy() { return this.files.some(f => ! f.id && ! f.error) },
+          reviewing: null,
+          get busy() { return this.files.some(f => (! f.id && ! f.error) || f.waiting) },
           headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) },
           pick(list) {
               this.pending = [...list];
@@ -18,13 +19,12 @@
               this.$dispatch('close-modal', 'chat-files');
           },
           upload(file, student) {
-              const image = /\.(png|jpe?g|gif|bmp|tiff?|webp)$/i.test(file.name);
-              this.files.push({ key: Math.random(), name: file.name, progress: 0, id: null, student, share: student || ! image ? 'text' : 'image', image, waiting: false, faces: null, error: null, url: null });
+              this.files.push({ key: Math.random(), name: file.name, progress: 0, id: null, student, image: /\.(png|jpe?g|gif|bmp|tiff?|webp)$/i.test(file.name), text: true, waiting: false, faces: 0, logos: 0, covered: 0, preview: null, error: null, url: null });
               const item = this.files[this.files.length - 1];
               if (file.size > {{ $canUpload ? \TornadoEngine\Uploads\Uploads::maxMb() : 0 }} * 1048576) { item.error = @js(__('Larger than :size MB', ['size' => $canUpload ? \TornadoEngine\Uploads\Uploads::maxMb() : 0])); return; }
               const data = new FormData();
               data.append('files[]', file);
-              data.append('share', item.share);
+              data.append('student', student ? 1 : 0);
               const xhr = new XMLHttpRequest();
               xhr.open('POST', @js($canUpload ? route('uploads.store') : ''));
               xhr.setRequestHeader('Accept', 'application/json');
@@ -33,15 +33,26 @@
               xhr.onload = () => {
                   let response = {};
                   try { response = JSON.parse(xhr.responseText) } catch (e) {}
-                  if (xhr.status === 200 && response.uploads) Object.assign(item, response.uploads[0]);
-                  else item.error = response.errors ? Object.values(response.errors)[0][0] : (response.message || @js(__('Couldn\'t upload it.')));
+                  if (xhr.status === 200 && response.uploads) {
+                      Object.assign(item, response.uploads[0]);
+                      if (item.waiting) this.review(item);
+                  } else item.error = response.errors ? Object.values(response.errors)[0][0] : (response.message || @js(__('Couldn\'t upload it.')));
               };
               xhr.onerror = () => item.error = @js(__('Couldn\'t upload it.'));
               xhr.send(data);
           },
-          async share(item, share, confirm = false) {
-              const response = await fetch(item.url.share, { method: 'POST', headers: this.headers, body: JSON.stringify({ share, confirm_faces: confirm }) });
+          review(item) {
+              this.reviewing = item;
+              this.$dispatch('open-modal', 'chat-review');
+          },
+          async decide(cover) {
+              const item = this.reviewing;
+              const response = await fetch(item.url.review, { method: 'POST', headers: this.headers, body: JSON.stringify({ cover }) });
               if (response.ok) Object.assign(item, await response.json());
+              this.reviewing = null;
+              this.$dispatch('close-modal', 'chat-review');
+              const next = this.files.find(f => f.waiting);
+              if (next) this.$nextTick(() => this.review(next));
           },
           remove(item) {
               if (item.url) fetch(item.url.destroy, { method: 'DELETE', headers: this.headers });
@@ -57,20 +68,24 @@
         @if ($canUpload)
             <div x-show="files.length" x-cloak class="flex flex-wrap gap-2 p-1">
                 <template x-for="file in files" :key="file.key">
-                    <div class="w-full space-y-1.5 rounded-2xl border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm sm:w-72">
-                        <div class="flex items-center gap-2">
-                            <span class="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100" x-text="file.name"></span>
-                            <span x-show="! file.id && ! file.error" class="text-gray-500 dark:text-gray-400" x-text="file.progress < 100 ? file.progress + '%' : @js(__('Reading…'))"></span>
-                            <button type="button" x-on:click="remove(file)" class="-me-1 inline-flex size-8 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="{{ __('Remove') }}">
-                                <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
-                            </button>
+                    <div class="flex w-full gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 p-2 text-sm sm:w-80">
+                        <template x-if="file.preview">
+                            <img :src="file.preview" alt="" class="size-14 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 object-cover">
+                        </template>
+                        <div class="min-w-0 flex-1 space-y-0.5 py-0.5">
+                            <div class="flex items-center gap-2">
+                                <span class="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100" x-text="file.name"></span>
+                                <span x-show="! file.id && ! file.error" class="text-gray-500 dark:text-gray-400" x-text="file.progress < 100 ? file.progress + '%' : @js(__('Reading…'))"></span>
+                                <button type="button" x-on:click="remove(file)" class="-my-1 -me-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="{{ __('Remove') }}">
+                                    <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
+                                </button>
+                            </div>
+                            <p x-show="file.id" class="text-gray-600 dark:text-gray-400" x-text="file.student ? @js(__('Student information')) : @js(__('No student information'))"></p>
+                            <p x-show="file.id && file.covered" class="text-gray-600 dark:text-gray-400" x-text="file.covered === 1 ? @js(__('1 area covered')) : file.covered + @js(' '.__('areas covered'))"></p>
+                            <button type="button" x-show="file.waiting" x-on:click="review(file)" class="min-h-11 font-medium text-amber-800 dark:text-amber-300 underline">{{ __('Check what was found') }}</button>
+                            <p x-show="file.id && ! file.image && ! file.text" class="text-amber-800 dark:text-amber-300">{{ __('No text found, so Claude won\'t see it.') }}</p>
+                            <p x-show="file.error" class="text-red-700 dark:text-red-400" x-text="file.error"></p>
                         </div>
-                        <p x-show="file.id" class="text-gray-600 dark:text-gray-400" x-text="file.student ? @js(__('Student information')) : @js(__('No student information'))"></p>
-                        <div x-show="file.waiting" class="space-y-1.5 text-amber-800 dark:text-amber-300">
-                            <p x-text="file.faces === null ? @js(__('Couldn\'t check it for faces. Claude gets only its text until you confirm.')) : (file.faces === 1 ? @js(__('A face was found. Claude gets only its text until you confirm.')) : file.faces + @js(' '.__('faces were found. Claude gets only its text until you confirm.')))"></p>
-                            <button type="button" x-on:click="share(file, 'image', true)" class="min-h-11 font-medium underline">{{ __('Give Claude the image') }}</button>
-                        </div>
-                        <p x-show="file.error" class="text-red-700 dark:text-red-400" x-text="file.error"></p>
                     </div>
                 </template>
             </div>
@@ -104,6 +119,21 @@
                 <div class="flex justify-end gap-3">
                     <x-secondary-button type="button" x-on:click="answer(true)">{{ __('Yes') }}</x-secondary-button>
                     <x-primary-button type="button" x-on:click="answer(false)">{{ __('No') }}</x-primary-button>
+                </div>
+            </div>
+        </x-modal>
+
+        <x-modal name="chat-review" maxWidth="2xl">
+            <div class="space-y-4 p-6">
+                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100"
+                    x-text="reviewing && reviewing.faces ? (reviewing.faces === 1 && ! reviewing.logos ? @js(__('Is this a student?')) : @js(__('Are these students?'))) : @js(__('Cover this logo?'))"></h2>
+                <template x-if="reviewing && reviewing.preview">
+                    <img :src="reviewing.preview" alt="" class="max-h-[60vh] w-full rounded-md border border-gray-200 dark:border-gray-700 object-contain">
+                </template>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Red boxes show what was found. Black bars cover text the broker replaces.') }}</p>
+                <div class="flex flex-wrap justify-end gap-3">
+                    <x-secondary-button type="button" x-on:click="decide(false)">{{ __('No, leave it') }}</x-secondary-button>
+                    <x-primary-button type="button" x-on:click="decide(true)">{{ __('Yes, cover it') }}</x-primary-button>
                 </div>
             </div>
         </x-modal>
