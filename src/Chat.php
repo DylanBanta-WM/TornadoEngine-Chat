@@ -47,7 +47,7 @@ class Chat
 
     public function stop(Conversation $conversation): void
     {
-        $conversation->messages()->latest('id')->first()?->task?->update(['stop' => true]);
+        $conversation->messages()->reorder('id', 'desc')->first()?->task?->update(['stop' => true]);
         HarnessTask::where('source', 'chat')->where('reference', (string) $conversation->id)->where('status', 'queued')
             ->update(['status' => 'stopped', 'finished_at' => now()]);
     }

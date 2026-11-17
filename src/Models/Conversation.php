@@ -54,7 +54,8 @@ class Conversation extends Model
     /** Whether Claude is working on (or waiting to start) the last message. */
     public function running(): bool
     {
-        $task = $this->messages()->latest('id')->first()?->task;
+        // messages() lists oldest first, so reorder for the newest.
+        $task = $this->messages()->reorder('id', 'desc')->first()?->task;
 
         return $task !== null && ! $task->finished();
     }

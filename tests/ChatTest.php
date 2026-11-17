@@ -206,4 +206,19 @@ class ChatTest extends TestCase
         $this->assertSame([$saved->id, $recent->id], Conversation::orderBy('id')->pluck('id')->all());
         $this->assertSame(0, HarnessTask::where('reference', (string) $old->id)->count(), 'what Claude did goes too');
     }
+
+    public function test_a_second_message_shows_claude_working_until_it_replies(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Hello']);
+        $conversation = Conversation::first();
+        HarnessTask::query()->update(['status' => 'done']);
+
+        $this->actingAs($admin)->post("/chat/{$conversation->id}/messages", ['text' => 'Make a module']);
+
+        $this->assertTrue($conversation->fresh()->running());
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")->assertSee('Stop')->assertSee('running: true', false);
+        $this->actingAs($admin)->getJson("/chat/{$conversation->id}/turns")->assertJson(['running' => true]);
+        $this->actingAs($admin)->from("/chat/{$conversation->id}")->post("/chat/{$conversation->id}/messages", ['text' => 'Again'])->assertSessionHasErrors();
+    }
 }
