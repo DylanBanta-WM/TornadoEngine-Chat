@@ -4,19 +4,27 @@
 <form method="POST" action="{{ $action }}" class="mx-auto w-full max-w-3xl"
       x-data="{
           files: [],
+          pending: [],
           get busy() { return this.files.some(f => ! f.id && ! f.error) },
           headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) },
           pick(list) {
-              for (const file of list) this.upload(file);
+              this.pending = [...list];
               this.$refs.files.value = '';
+              if (this.pending.length) this.$dispatch('open-modal', 'chat-files');
           },
-          upload(file) {
-              this.files.push({ key: Math.random(), name: file.name, progress: 0, id: null, share: 'text', image: /\.(png|jpe?g|gif|bmp|tiff?|webp)$/i.test(file.name), waiting: false, faces: null, error: null, url: null });
+          answer(student) {
+              for (const file of this.pending) this.upload(file, student);
+              this.pending = [];
+              this.$dispatch('close-modal', 'chat-files');
+          },
+          upload(file, student) {
+              const image = /\.(png|jpe?g|gif|bmp|tiff?|webp)$/i.test(file.name);
+              this.files.push({ key: Math.random(), name: file.name, progress: 0, id: null, student, share: student || ! image ? 'text' : 'image', image, waiting: false, faces: null, error: null, url: null });
               const item = this.files[this.files.length - 1];
               if (file.size > {{ $canUpload ? \TornadoEngine\Uploads\Uploads::maxMb() : 0 }} * 1048576) { item.error = @js(__('Larger than :size MB', ['size' => $canUpload ? \TornadoEngine\Uploads\Uploads::maxMb() : 0])); return; }
               const data = new FormData();
               data.append('files[]', file);
-              data.append('share', 'text');
+              data.append('share', item.share);
               const xhr = new XMLHttpRequest();
               xhr.open('POST', @js($canUpload ? route('uploads.store') : ''));
               xhr.setRequestHeader('Accept', 'application/json');
@@ -57,12 +65,7 @@
                                 <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
                             </button>
                         </div>
-                        <select x-show="file.id" x-on:change="share(file, $event.target.value)" :aria-label="@js(__('What Claude gets'))"
-                                class="block w-full min-h-11 rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 text-sm focus:border-indigo-500 focus:ring-indigo-500">
-                            <option value="text" :selected="file.share === 'text'">{{ __('Filtered text') }}</option>
-                            <option value="none" :selected="file.share === 'none'">{{ __('Nothing (student information)') }}</option>
-                            <option value="image" x-show="file.image" :disabled="! file.image" :selected="file.share === 'image'">{{ __('Image too (no student information)') }}</option>
-                        </select>
+                        <p x-show="file.id" class="text-gray-600 dark:text-gray-400" x-text="file.student ? @js(__('Student information')) : @js(__('No student information'))"></p>
                         <div x-show="file.waiting" class="space-y-1.5 text-amber-800 dark:text-amber-300">
                             <p x-text="file.faces === null ? @js(__('Couldn\'t check it for faces. Claude gets only its text until you confirm.')) : (file.faces === 1 ? @js(__('A face was found. Claude gets only its text until you confirm.')) : file.faces + @js(' '.__('faces were found. Claude gets only its text until you confirm.')))"></p>
                             <button type="button" x-on:click="share(file, 'image', true)" class="min-h-11 font-medium underline">{{ __('Give Claude the image') }}</button>
@@ -94,7 +97,16 @@
         </div>
     </div>
     @if ($canUpload)
-        <div x-show="files.length" x-cloak class="mt-2 px-3">@include('uploads::warning')</div>
+        <x-modal name="chat-files" maxWidth="md">
+            <div class="space-y-4 p-6">
+                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100" x-text="pending.length > 1 ? @js(__('Do these files contain student information?')) : @js(__('Does this file contain student information?'))"></h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Files with student information go through the broker, which tries to remove it before Claude reads them. It can miss some, especially in images, so consider removing student information before you upload.') }}</p>
+                <div class="flex justify-end gap-3">
+                    <x-secondary-button type="button" x-on:click="answer(true)">{{ __('Yes') }}</x-secondary-button>
+                    <x-primary-button type="button" x-on:click="answer(false)">{{ __('No') }}</x-primary-button>
+                </div>
+            </div>
+        </x-modal>
     @endif
     <x-input-error :messages="$errors->get('text')" class="mt-2 px-3" />
 </form>

@@ -237,4 +237,11 @@ class ChatTest extends TestCase
         $this->assertNull(Setting::get('chat.system_prompt'));
         $this->assertStringContainsString('Installed modules:', Chat::systemPrompt());
     }
+
+    public function test_attaching_files_asks_about_student_information(): void
+    {
+        $this->actingAs($this->admin())->get('/chat')
+            ->assertSee('Does this file contain student information?')
+            ->assertSee('Files with student information go through the broker, which tries to remove it before Claude reads them.');
+    }
 }
