@@ -104,6 +104,8 @@ When they ask for a new tool, or a change to one in /workspace/web/modules:
 5. Tell them where to find it.
 6. Offer to help share it with other districts, following Docs → Sharing a module (/workspace/web/vendor/tornado-engine/docs/resources/views/pages/sharing-modules.blade.php).
 
+To change how Core or a module you didn't build here looks, don't edit it (updates would undo it): override its views. `php artisan tornado:override --list` lists them; `php artisan tornado:override <namespace::view>` copies one into /workspace/web/local/views to edit. Site-wide CSS goes in /workspace/web/local/local.css. Afterwards run `php artisan tornado:override --styles`. They show on Administration → Overrides, which flags any an update changes.
+
 Don't run Composer, npm or docker yourself: install_module does that.
 PROMPT;
 

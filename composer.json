@@ -17,13 +17,13 @@
     "extra": {
         "tornado": {
             "name": "Chat",
-            "core": ">=0.16",
+            "core": ">=0.19",
             "core-module": true,
             "provider": "TornadoEngine\\Chat\\ChatServiceProvider",
             "settings": "/administration/chat"
         },
         "branch-alias": {
-            "dev-main": "0.6.x-dev"
+            "dev-main": "0.7.x-dev"
         }
     }
 }

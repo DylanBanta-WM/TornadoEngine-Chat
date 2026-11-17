@@ -3,8 +3,8 @@
     $icon = 'size-5';
 @endphp
 
-<x-app-layout>
-    <div class="flex h-[calc(100dvh-4rem-1px)] bg-white dark:bg-gray-900" x-data="{ history: false }">
+<x-app-layout fill>
+    <div class="flex min-h-0 flex-1 bg-white dark:bg-gray-900" x-data="{ history: false }">
         {{-- History --}}
         <div x-show="history" x-cloak x-on:click="history = false" class="fixed inset-0 z-30 bg-gray-900/40 md:hidden"></div>
         <aside :class="{ '-translate-x-full': ! history }"
