@@ -43,11 +43,54 @@
           },
           review(item) {
               this.reviewing = item;
+              this.boxes = null;
+              this.drawing = null;
               this.$dispatch('open-modal', 'chat-review');
+          },
+          // The red boxes, in percent of the image, once it has loaded: found ones the uploader can remove, and their own.
+          boxes: null,
+          drawing: null,
+          size: null,
+          loaded(img) {
+              this.size = [img.naturalWidth, img.naturalHeight];
+              if (! this.reviewing.boxes) return; // Uploads before 0.6 draws them into the image
+              this.boxes = this.reviewing.boxes.map(([x, y, w, h]) => ({ key: Math.random(), x: x / this.size[0] * 100, y: y / this.size[1] * 100, w: w / this.size[0] * 100, h: h / this.size[1] * 100 }));
+          },
+          point(event) {
+              const rect = this.$refs.canvas.getBoundingClientRect();
+              return [Math.min(100, Math.max(0, (event.clientX - rect.left) / rect.width * 100)), Math.min(100, Math.max(0, (event.clientY - rect.top) / rect.height * 100))];
+          },
+          start(event) {
+              if (! this.boxes || event.button > 0) return;
+              event.currentTarget.setPointerCapture(event.pointerId);
+              const [x, y] = this.point(event);
+              this.drawing = { key: Math.random(), from: [x, y], x, y, w: 0, h: 0 };
+          },
+          move(event) {
+              if (! this.drawing) return;
+              const [x, y] = this.point(event);
+              const [fx, fy] = this.drawing.from;
+              Object.assign(this.drawing, { x: Math.min(x, fx), y: Math.min(y, fy), w: Math.abs(x - fx), h: Math.abs(y - fy) });
+          },
+          end() {
+              if (this.drawing && this.drawing.w > 1 && this.drawing.h > 1) this.boxes.push(this.drawing);
+              this.drawing = null;
+          },
+          pixels() {
+              return (this.boxes || []).map(b => [Math.round(b.x / 100 * this.size[0]), Math.round(b.y / 100 * this.size[1]), Math.round(b.w / 100 * this.size[0]), Math.round(b.h / 100 * this.size[1])]);
+          },
+          abort() {
+              const item = this.reviewing;
+              this.reviewing = null;
+              this.$dispatch('close-modal', 'chat-review');
+              this.remove(item);
+              const next = this.files.find(f => f.waiting);
+              if (next) this.$nextTick(() => this.review(next));
           },
           async decide(cover) {
               const item = this.reviewing;
-              const response = await fetch(item.url.review, { method: 'POST', headers: this.headers, body: JSON.stringify({ cover }) });
+              const body = cover && this.boxes ? { cover: this.boxes.length > 0, boxes: this.pixels() } : { cover };
+              const response = await fetch(item.url.review, { method: 'POST', headers: this.headers, body: JSON.stringify(body) });
               if (response.ok) Object.assign(item, await response.json());
               this.reviewing = null;
               this.$dispatch('close-modal', 'chat-review');
@@ -116,9 +159,12 @@
             <div class="space-y-4 p-6">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100" x-text="pending.length > 1 ? @js(__('Do these files contain student information?')) : @js(__('Does this file contain student information?'))"></h2>
                 <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Files with student information go through the broker, which tries to remove it before Claude reads them. It can miss some, especially in images, so consider removing student information before you upload.') }}</p>
-                <div class="flex justify-end gap-3">
-                    <x-secondary-button type="button" x-on:click="answer(true)">{{ __('Yes') }}</x-secondary-button>
-                    <x-primary-button type="button" x-on:click="answer(false)">{{ __('No') }}</x-primary-button>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <button type="button" x-on:click="pending = []; $dispatch('close-modal', 'chat-files')" class="min-h-11 font-medium text-gray-600 dark:text-gray-400 underline">{{ __('Cancel') }}</button>
+                    <div class="flex gap-3">
+                        <x-secondary-button type="button" x-on:click="answer(true)">{{ __('Yes') }}</x-secondary-button>
+                        <x-primary-button type="button" x-on:click="answer(false)">{{ __('No') }}</x-primary-button>
+                    </div>
                 </div>
             </div>
         </x-modal>
@@ -128,12 +174,27 @@
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100"
                     x-text="reviewing && reviewing.faces ? (reviewing.faces === 1 && ! reviewing.logos ? @js(__('Is this a student?')) : @js(__('Are these students?'))) : @js(__('Cover this logo?'))"></h2>
                 <template x-if="reviewing && reviewing.preview">
-                    <img :src="reviewing.preview" alt="" class="max-h-[60vh] w-full rounded-md border border-gray-200 dark:border-gray-700 object-contain">
+                    <div class="flex justify-center">
+                        <div x-ref="canvas" class="relative inline-block cursor-crosshair touch-none select-none"
+                             x-on:pointerdown="start($event)" x-on:pointermove="move($event)" x-on:pointerup="end()" x-on:pointercancel="drawing = null">
+                            <img :src="reviewing.preview" alt="" draggable="false" x-on:load="loaded($el)" class="block max-h-[60vh] max-w-full rounded-md border border-gray-200 dark:border-gray-700">
+                            <template x-for="box in (boxes || [])" :key="box.key">
+                                <div class="absolute border-[3px] border-red-600" :style="`left:${box.x}%;top:${box.y}%;width:${box.w}%;height:${box.h}%`">
+                                    <button type="button" x-on:pointerdown.stop x-on:click="boxes = boxes.filter(b => b !== box)" aria-label="{{ __('Remove this box') }}"
+                                            class="absolute -right-3 -top-3 flex size-7 items-center justify-center rounded-full bg-red-600 text-sm font-bold leading-none text-white shadow hover:bg-red-700">&times;</button>
+                                </div>
+                            </template>
+                            <div x-show="drawing" class="absolute border-[3px] border-dashed border-red-600" :style="drawing && `left:${drawing.x}%;top:${drawing.y}%;width:${drawing.w}%;height:${drawing.h}%`"></div>
+                        </div>
+                    </div>
                 </template>
-                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Red boxes show what was found. Black bars cover text the broker replaces.') }}</p>
-                <div class="flex flex-wrap justify-end gap-3">
-                    <x-secondary-button type="button" x-on:click="decide(false)">{{ __('No, leave it') }}</x-secondary-button>
-                    <x-primary-button type="button" x-on:click="decide(true)">{{ __('Yes, cover it') }}</x-primary-button>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Red boxes show what was found. Drag to add a box; × removes one. Black bars cover text the broker replaces.') }}</p>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <x-danger-button type="button" x-on:click="abort()">{{ __('Don\'t send to Claude') }}</x-danger-button>
+                    <div class="flex flex-wrap gap-3">
+                        <x-secondary-button type="button" x-on:click="decide(false)">{{ __('No, leave it') }}</x-secondary-button>
+                        <x-primary-button type="button" x-on:click="decide(true)">{{ __('Yes, cover them') }}</x-primary-button>
+                    </div>
                 </div>
             </div>
         </x-modal>
