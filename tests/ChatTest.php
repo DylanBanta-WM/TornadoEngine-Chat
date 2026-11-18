@@ -300,4 +300,39 @@ class ChatTest extends TestCase
         // Claude never got the image (it wasn't prepared), so "What Claude sees" doesn't show it.
         $this->actingAs($admin)->get("/chat/{$message->chat_conversation_id}?claude=1")->assertDontSee('data-gallery=', false);
     }
+
+    public function test_a_file_alone_can_be_the_message(): void
+    {
+        $admin = $this->admin();
+        Storage::fake('uploads');
+        $upload = Upload::create(['user_id' => $admin->id, 'name' => 'notes.txt', 'mime' => 'text/plain', 'size' => 10, 'path' => '1/notes.txt', 'share' => 'text']);
+
+        $this->actingAs($admin)->post('/chat', ['text' => '', 'uploads' => [$upload->id]])->assertRedirect();
+
+        $conversation = Conversation::sole();
+        $message = $conversation->messages()->sole();
+        $this->assertSame('notes.txt', $conversation->title);
+        $this->assertSame('', $message->text);
+        $this->assertStringStartsWith("The user sent these files (copies for you, read them with the Read tool):\n- notes.txt", HarnessTask::sole()->prompt);
+        $this->assertSame(['chat', (string) $message->id], [$upload->fresh()->source, $upload->fresh()->reference]);
+        $this->actingAs($admin)->get("/chat/{$conversation->id}")->assertOk()->assertSee('notes.txt')->assertDontSee('rounded-3xl bg-gray-100', false);
+
+        // In a chat, too.
+        HarnessTask::query()->update(['status' => 'done']);
+        $second = Upload::create(['user_id' => $admin->id, 'name' => 'more.txt', 'mime' => 'text/plain', 'size' => 10, 'path' => '1/more.txt', 'share' => 'text']);
+        $this->actingAs($admin)->post("/chat/{$conversation->id}/messages", ['uploads' => [$second->id]])->assertRedirect();
+        $this->assertSame(2, HarnessTask::count());
+        $this->assertSame('notes.txt', $conversation->fresh()->title);
+    }
+
+    public function test_text_is_needed_without_a_file(): void
+    {
+        $admin = $this->admin();
+        $theirs = Upload::create(['user_id' => User::factory()->create()->id, 'name' => 'notes.txt', 'mime' => 'text/plain', 'size' => 10, 'path' => '1/notes.txt', 'share' => 'text']);
+
+        $this->actingAs($admin)->post('/chat', ['text' => ''])->assertSessionHasErrors('text');
+        $this->actingAs($admin)->post('/chat', ['text' => '', 'uploads' => [$theirs->id]])->assertSessionHasErrors('text');
+        $this->assertSame([0, 0], [Conversation::count(), HarnessTask::count()]);
+        $this->assertNull($theirs->fresh()->source);
+    }
 }

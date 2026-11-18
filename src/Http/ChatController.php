@@ -31,6 +31,7 @@ class ChatController extends Controller
     public function start(Request $request, Chat $chat): RedirectResponse
     {
         $data = $this->message($request);
+        // The title is the first message, or (a file alone) Chat::send names it after the first file.
         $conversation = Conversation::create(['user_id' => $request->user()->id, 'title' => Str::limit($data['text'], 60)]);
 
         try {
@@ -113,14 +114,16 @@ class ChatController extends Controller
         return $request->expectsJson() ? response()->json(['status' => $approval->status]) : redirect()->route('chat.show', $conversation);
     }
 
-    /** @return array{text: string} */
+    /** @return array{text: string, uploads?: list<int>} text can be empty when files are attached */
     private function message(Request $request): array
     {
-        return $request->validate([
-            'text' => ['required', 'string', 'max:20000'],
+        $data = $request->validate([
+            'text' => ['nullable', 'required_without:uploads', 'string', 'max:20000'],
             'uploads' => ['nullable', 'array', 'max:20'],
             'uploads.*' => ['integer'],
         ]);
+
+        return ['text' => trim((string) ($data['text'] ?? ''))] + $data;
     }
 
     private function own(Request $request, Conversation $conversation): void

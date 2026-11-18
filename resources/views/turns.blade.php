@@ -20,7 +20,9 @@
                 <span class="truncate">{{ $file['name'] }}</span>
             </span>
         @endforeach
-        <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-gray-100 dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ $turn['text'] }}</div>
+        @if (trim((string) $turn['text']) !== '')
+            <div class="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-gray-100 dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-gray-100">{{ $turn['text'] }}</div>
+        @endif
     </div>
 
     <div class="space-y-2">

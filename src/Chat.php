@@ -7,6 +7,7 @@ use App\Models\Setting;
 use App\Modules\Module;
 use App\Modules\ModuleRegistry;
 use App\Support\Setup;
+use Illuminate\Support\Str;
 use RuntimeException;
 use TornadoEngine\Broker\Broker;
 use TornadoEngine\Chat\Models\Conversation;
@@ -36,14 +37,25 @@ class Chat
             throw new RuntimeException(__('Claude is still working on your last message.'));
         }
 
-        $conversation->touch();
-
         $attached = $uploads && class_exists(Upload::class)
             ? Upload::whereIn('id', $uploads)->where('user_id', $conversation->user_id)->whereNull('source')->orderBy('id')->get() : collect();
-        $prompt = $this->broker->filter($text);
-        if ($attached->isNotEmpty()) {
-            $prompt .= "\n\nFiles they attached (copies for you, read them with the Read tool):\n".$attached->map->describeForClaude()->implode("\n");
+        $text = trim($text);
+        if ($text === '' && $attached->isEmpty()) {
+            throw new RuntimeException(__('Write a message.'));
         }
+
+        // A file alone names a new chat.
+        if ($text === '' && $conversation->title === '') {
+            $conversation->title = Str::limit($attached->first()->name, 60);
+        }
+        $conversation->touch();
+
+        $files = $attached->map->describeForClaude()->implode("\n");
+        $prompt = match (true) {
+            $attached->isEmpty() => $this->broker->filter($text),
+            $text === '' => "The user sent these files (copies for you, read them with the Read tool):\n".$files,
+            default => $this->broker->filter($text)."\n\nFiles they attached (copies for you, read them with the Read tool):\n".$files,
+        };
 
         $task = HarnessTask::queue('chat', $prompt,
             reference: (string) $conversation->id,

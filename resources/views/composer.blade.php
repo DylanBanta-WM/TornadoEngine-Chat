@@ -143,7 +143,7 @@
                 </button>
             @endif
             <label for="chat-text" class="sr-only">{{ __('Message') }}</label>
-            <textarea id="chat-text" name="text" rows="1" required @disabled($running ?? false) placeholder="{{ __('Message') }}"
+            <textarea id="chat-text" name="text" rows="1" required :required="! files.some(f => f.id)" @disabled($running ?? false) placeholder="{{ __('Message') }}"
                       x-init="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 200) + 'px'"
                       x-on:input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 200) + 'px'"
                       x-on:keydown.enter="if (! $event.shiftKey && ! window.matchMedia('(pointer: coarse)').matches) { $event.preventDefault(); if (! busy) $el.form.requestSubmit() }"
@@ -172,7 +172,7 @@
         <x-modal name="chat-review" maxWidth="2xl">
             <div class="space-y-4 p-6">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100"
-                    x-text="reviewing && reviewing.faces ? (reviewing.faces === 1 && ! reviewing.logos ? @js(__('Is this a student?')) : @js(__('Are these students?'))) : @js(__('Cover this logo?'))"></h2>
+                    x-text="! reviewing ? '' : (reviewing.faces && reviewing.logos ? @js(__('Are these students\' faces or blocked logos?')) : (reviewing.faces ? (reviewing.faces === 1 ? @js(__('Is this a student\'s face?')) : @js(__('Are these students\' faces?'))) : (reviewing.logos > 1 ? @js(__('Are these blocked logos?')) : @js(__('Is this a blocked logo?')))))"></h2>
                 <template x-if="reviewing && reviewing.preview">
                     <div class="flex justify-center">
                         <div x-ref="canvas" class="relative inline-block cursor-crosshair touch-none select-none"
