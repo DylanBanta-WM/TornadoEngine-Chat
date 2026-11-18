@@ -240,11 +240,12 @@ class ChatTest extends TestCase
         $this->assertStringContainsString('Installed modules, and what each offers', Chat::systemPrompt());
     }
 
-    public function test_attaching_files_asks_about_student_information(): void
+    public function test_attaching_files_warns_about_sensitive_information(): void
     {
         $this->actingAs($this->admin())->get('/chat')
-            ->assertSee('Does this file contain student information?')
-            ->assertSee('Files with student information go through the broker, which tries to remove it before Claude reads them.');
+            ->assertSee('Don&#039;t upload sensitive information', false)
+            ->assertSee('The broker tries to remove student information from files before Claude reads them')
+            ->assertDontSee('Does this file contain student information?');
     }
 
     public function test_modules_tell_claude_what_they_offer_and_admins_can_edit_it_on_their_settings_page(): void

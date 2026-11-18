@@ -8,13 +8,19 @@
           reviewing: null,
           get busy() { return this.files.some(f => (! f.id && ! f.error) || f.waiting) },
           headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': @js(csrf_token()) },
+          // The warning shows each time files are picked; once seen, it can be turned off until the page is reloaded.
+          warned: 0,
+          quiet: false,
           pick(list) {
               this.pending = [...list];
               this.$refs.files.value = '';
-              if (this.pending.length) this.$dispatch('open-modal', 'chat-files');
+              if (! this.pending.length) return;
+              if (this.quiet) return this.send();
+              this.warned++;
+              this.$dispatch('open-modal', 'chat-files');
           },
-          answer(student) {
-              for (const file of this.pending) this.upload(file, student);
+          send() {
+              for (const file of this.pending) this.upload(file, true);
               this.pending = [];
               this.$dispatch('close-modal', 'chat-files');
           },
@@ -140,7 +146,6 @@
                                     <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
                                 </button>
                             </div>
-                            <p x-show="file.id" class="text-gray-600 dark:text-gray-400" x-text="file.student ? @js(__('Student information')) : @js(__('No student information'))"></p>
                             <p x-show="file.id && file.covered" class="text-gray-600 dark:text-gray-400" x-text="file.covered === 1 ? @js(__('1 area covered')) : file.covered + @js(' '.__('areas covered'))"></p>
                             <button type="button" x-show="file.waiting" x-on:click="review(file)" class="min-h-11 font-medium text-amber-800 dark:text-amber-300 underline">{{ __('Check what was found') }}</button>
                             <p x-show="file.id && ! file.image && ! file.text" class="text-amber-800 dark:text-amber-300">{{ __('No text found, so Claude won\'t see it.') }}</p>
@@ -174,13 +179,13 @@
     @if ($canUpload)
         <x-modal name="chat-files" maxWidth="md">
             <div class="space-y-4 p-6">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100" x-text="pending.length > 1 ? @js(__('Do these files contain student information?')) : @js(__('Does this file contain student information?'))"></h2>
-                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Files with student information go through the broker, which tries to remove it before Claude reads them. It can miss some, especially in images, so consider removing student information before you upload.') }}</p>
+                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ __('Don\'t upload sensitive information') }}</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('The broker tries to remove student information from files before Claude reads them, but it can miss some, especially in images.') }}</p>
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <button type="button" x-on:click="pending = []; $dispatch('close-modal', 'chat-files')" class="min-h-11 font-medium text-gray-600 dark:text-gray-400 underline">{{ __('Cancel') }}</button>
-                    <div class="flex gap-3">
-                        <x-secondary-button type="button" x-on:click="answer(true)">{{ __('Yes') }}</x-secondary-button>
-                        <x-primary-button type="button" x-on:click="answer(false)">{{ __('No') }}</x-primary-button>
+                    <div class="flex flex-wrap gap-3">
+                        <x-secondary-button type="button" x-show="warned > 1" x-on:click="quiet = true; send()">{{ __('Don\'t show this again') }}</x-secondary-button>
+                        <x-primary-button type="button" x-on:click="send()">{{ __('Close') }}</x-primary-button>
                     </div>
                 </div>
             </div>
