@@ -54,7 +54,21 @@
           loaded(img) {
               this.size = [img.naturalWidth, img.naturalHeight];
               if (! this.reviewing.boxes) return; // Uploads before 0.6 draws them into the image
-              this.boxes = this.reviewing.boxes.map(([x, y, w, h]) => ({ key: Math.random(), x: x / this.size[0] * 100, y: y / this.size[1] * 100, w: w / this.size[0] * 100, h: h / this.size[1] * 100 }));
+              this.boxes = this.reviewing.boxes.map(([x, y, w, h], i) => ({ key: Math.random(), kind: (this.reviewing.kinds || [])[i] || 'face', x: x / this.size[0] * 100, y: y / this.size[1] * 100, w: w / this.size[0] * 100, h: h / this.size[1] * 100 }));
+          },
+          // Faces red, logos blue, names green, boxes the uploader drew yellow.
+          colors: { face: 'border-red-600 bg-red-600', logo: 'border-blue-600 bg-blue-600', name: 'border-green-600 bg-green-600', drawn: 'border-yellow-400 bg-yellow-400' },
+          heading() {
+              const r = this.reviewing;
+              if (! r) return '';
+              const one = (r.faces || 0) + (r.logos || 0) + (r.names || 0) === 1;
+              const parts = [
+                  r.faces && (one ? @js(__('a student\'s face')) : @js(__('students\' faces'))),
+                  r.logos && (one ? @js(__('a blocked logo')) : @js(__('blocked logos'))),
+                  r.names && (one ? @js(__('a student\'s name')) : @js(__('students\' names'))),
+              ].filter(Boolean);
+              const list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' ' + @js(__('or')) + ' ' + parts[parts.length - 1] : parts[0];
+              return (one ? @js(__('Is this')) : @js(__('Are these'))) + ' ' + list + '?';
           },
           point(event) {
               const rect = this.$refs.canvas.getBoundingClientRect();
@@ -64,7 +78,7 @@
               if (! this.boxes || event.button > 0) return;
               event.currentTarget.setPointerCapture(event.pointerId);
               const [x, y] = this.point(event);
-              this.drawing = { key: Math.random(), from: [x, y], x, y, w: 0, h: 0 };
+              this.drawing = { key: Math.random(), kind: 'drawn', from: [x, y], x, y, w: 0, h: 0 };
           },
           move(event) {
               if (! this.drawing) return;
@@ -175,29 +189,31 @@
         <x-modal name="chat-review" maxWidth="2xl">
             <div class="space-y-4 p-6">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100"
-                    x-text="! reviewing ? '' : (reviewing.faces && reviewing.logos ? @js(__('Are these students\' faces or blocked logos?')) : (reviewing.faces ? (reviewing.faces === 1 ? @js(__('Is this a student\'s face?')) : @js(__('Are these students\' faces?'))) : (reviewing.logos > 1 ? @js(__('Are these blocked logos?')) : @js(__('Is this a blocked logo?')))))"></h2>
+                    x-text="heading()"></h2>
                 <template x-if="reviewing && reviewing.preview">
                     <div class="flex justify-center">
                         <div x-ref="canvas" class="relative inline-block cursor-crosshair touch-none select-none"
                              x-on:pointerdown="start($event)" x-on:pointermove="move($event)" x-on:pointerup="end()" x-on:pointercancel="drawing = null">
                             <img :src="reviewing.preview" alt="" draggable="false" x-on:load="loaded($el)" class="block max-h-[60vh] max-w-full rounded-md border border-gray-200 dark:border-gray-700">
                             <template x-for="box in (boxes || [])" :key="box.key">
-                                <div class="absolute border-[3px] border-red-600" :style="`left:${box.x}%;top:${box.y}%;width:${box.w}%;height:${box.h}%`">
+                                <div class="absolute border-[3px] !bg-transparent" :class="colors[box.kind] || colors.face" :style="`left:${box.x}%;top:${box.y}%;width:${box.w}%;height:${box.h}%`">
                                     <button type="button" x-on:pointerdown.stop x-on:click="boxes = boxes.filter(b => b !== box)" aria-label="{{ __('Remove this box') }}"
-                                            class="absolute -right-3 -top-3 flex size-7 items-center justify-center rounded-full bg-red-600 text-sm font-bold leading-none text-white shadow hover:bg-red-700">&times;</button>
+                                            :class="colors[box.kind] || colors.face" class="absolute -right-3 -top-3 flex size-7 items-center justify-center rounded-full text-sm font-bold leading-none text-white shadow hover:opacity-80">&times;</button>
                                 </div>
                             </template>
-                            <div x-show="drawing" class="absolute border-[3px] border-dashed border-red-600" :style="drawing && `left:${drawing.x}%;top:${drawing.y}%;width:${drawing.w}%;height:${drawing.h}%`"></div>
+                            <div x-show="drawing" class="absolute border-[3px] border-dashed border-yellow-400" :style="drawing && `left:${drawing.x}%;top:${drawing.y}%;width:${drawing.w}%;height:${drawing.h}%`"></div>
                         </div>
                     </div>
                 </template>
-                <p class="text-sm text-gray-600 dark:text-gray-400">{{ __('Red boxes show what was found. Drag to add a box; × removes one. Black bars cover text the broker replaces.') }}</p>
+                <p class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
+                    @foreach (['border-red-600' => __('Faces'), 'border-blue-600' => __('Logos'), 'border-green-600' => __('Names'), 'border-yellow-400' => __('Yours')] as $color => $label)
+                        <span class="inline-flex items-center gap-1.5"><span class="size-3 rounded-sm border-2 {{ $color }}"></span>{{ $label }}</span>
+                    @endforeach
+                    <span>{{ __('Boxes are covered in black. Drag to add one; × removes one.') }}</span>
+                </p>
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <x-danger-button type="button" x-on:click="abort()">{{ __('Don\'t send to Claude') }}</x-danger-button>
-                    <div class="flex flex-wrap gap-3">
-                        <x-secondary-button type="button" x-on:click="decide(false)">{{ __('No, leave it') }}</x-secondary-button>
-                        <x-primary-button type="button" x-on:click="decide(true)">{{ __('Yes, cover them') }}</x-primary-button>
-                    </div>
+                    <x-primary-button type="button" x-on:click="decide(true)"><span x-text="boxes && ! boxes.length ? @js(__('Send without covering')) : @js(__('Cover the boxes'))"></span></x-primary-button>
                 </div>
             </div>
         </x-modal>
