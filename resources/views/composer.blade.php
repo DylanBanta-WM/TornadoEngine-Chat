@@ -118,7 +118,10 @@
                         <div class="min-w-0 flex-1 space-y-0.5 py-0.5">
                             <div class="flex items-center gap-2">
                                 <span class="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100" x-text="file.name"></span>
-                                <span x-show="! file.id && ! file.error" class="text-gray-500 dark:text-gray-400" x-text="file.progress < 100 ? file.progress + '%' : @js(__('Reading…'))"></span>
+                                <span x-show="! file.id && ! file.error" class="inline-flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                                    <svg x-show="file.progress >= 100" class="size-3.5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" class="opacity-25"/><path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" class="opacity-75"/></svg>
+                                    <span x-text="file.progress < 100 ? file.progress + '%' : @js(__('Reading…'))"></span>
+                                </span>
                                 <button type="button" x-on:click="remove(file)" class="-my-1 -me-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" aria-label="{{ __('Remove') }}">
                                     <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></svg>
                                 </button>
