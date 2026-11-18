@@ -6,7 +6,19 @@
 @endphp
 
 <x-app-layout fill>
-    <div class="flex min-h-0 flex-1 bg-white dark:bg-gray-900" x-data="{ history: false }">
+    <div class="flex min-h-0 flex-1 bg-white dark:bg-gray-900" x-data="{
+             history: false,
+             gallery: [],
+             shown: null,
+             open(event) {
+                 const button = event.target.closest('[data-gallery]');
+                 if (! button) return;
+                 this.gallery = [...this.$refs.turns.querySelectorAll('[data-gallery]')].map(b => ({ src: b.dataset.gallery, name: b.dataset.name }));
+                 this.shown = this.gallery.findIndex(image => image.src === button.dataset.gallery);
+             },
+             step(by) { if (this.shown !== null) this.shown = (this.shown + by + this.gallery.length) % this.gallery.length },
+         }"
+         x-on:keydown.escape.window="shown = null" x-on:keydown.arrow-left.window="step(-1)" x-on:keydown.arrow-right.window="step(1)">
         {{-- History --}}
         <div x-show="history" x-cloak x-on:click="history = false" class="fixed inset-0 z-30 bg-gray-900/40 md:hidden"></div>
         <aside :class="{ '-translate-x-full': ! history }"
@@ -85,7 +97,7 @@
 
             <div x-ref="scroll" class="flex-1 overflow-y-auto">
                 @if ($conversation)
-                    <div x-ref="turns" class="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 text-[15px] leading-relaxed">
+                    <div x-ref="turns" x-on:click="open($event)" class="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 text-[15px] leading-relaxed">
                         @include('chat::turns')
                     </div>
                 @else
@@ -99,5 +111,30 @@
                 @include('chat::composer', ['action' => $conversation ? route('chat.send', $conversation) : route('chat.start'), 'running' => $running])
             </div>
         </section>
+
+        {{-- Images in the conversation, full size --}}
+        <div x-show="shown !== null" x-cloak x-transition.opacity class="fixed inset-0 z-50 flex flex-col bg-gray-950/95" role="dialog" aria-modal="true" x-on:click.self="shown = null">
+            <div class="flex items-center justify-between gap-3 px-4 py-3 text-gray-100">
+                <p class="truncate text-sm" x-text="shown !== null ? gallery[shown].name + (gallery.length > 1 ? ' · ' + (shown + 1) + ' / ' + gallery.length : '') : ''"></p>
+                <button type="button" x-on:click="shown = null" class="flex size-11 items-center justify-center rounded-full hover:bg-white/10" aria-label="{{ __('Close') }}">
+                    <svg class="{{ $icon }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-4" x-on:click.self="shown = null">
+                <template x-if="shown !== null">
+                    <img :src="gallery[shown].src" :alt="gallery[shown].name" class="max-h-full max-w-full rounded-md object-contain">
+                </template>
+                <template x-if="gallery.length > 1">
+                    <div>
+                        <button type="button" x-on:click="step(-1)" class="absolute left-3 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70" aria-label="{{ __('Previous') }}">
+                            <svg class="{{ $icon }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                        </button>
+                        <button type="button" x-on:click="step(1)" class="absolute right-3 top-1/2 flex size-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70" aria-label="{{ __('Next') }}">
+                            <svg class="{{ $icon }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
+                        </button>
+                    </div>
+                </template>
+            </div>
+        </div>
     </div>
 </x-app-layout>

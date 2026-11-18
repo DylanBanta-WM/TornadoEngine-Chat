@@ -4,6 +4,7 @@ namespace TornadoEngine\Chat;
 
 use App\Harness\HarnessTask;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use TornadoEngine\Broker\Broker;
 use TornadoEngine\Chat\Models\Conversation;
@@ -32,7 +33,7 @@ class Transcript
             $turns[] = [
                 'text' => $asClaude && $task ? $task->prompt : $message->text,
                 'files' => class_exists(Upload::class)
-                    ? Upload::where('source', 'chat')->where('reference', (string) $message->id)->orderBy('id')->pluck('name')->all() : [],
+                    ? Upload::where('source', 'chat')->where('reference', (string) $message->id)->orderBy('id')->get()->map(fn (Upload $upload) => $this->file($upload))->all() : [],
                 'at' => $message->created_at,
                 'status' => $task?->status,
                 'error' => $task?->status === 'failed' ? $this->failure($task) : null,
@@ -42,6 +43,23 @@ class Transcript
         }
 
         return $turns;
+    }
+
+    /**
+     * A file attached to a message. Images can be opened: the one uploaded, or in "What Claude sees", the copy Claude got.
+     *
+     * @return array{name: string, image: ?string}
+     */
+    private function file(Upload $upload): array
+    {
+        $image = null;
+        if ($upload->isImage() && Route::has('uploads.image')) {
+            $preview = isset($upload->forClaude()['image.png']) ? route('uploads.preview', $upload).'?v='.$upload->updated_at?->timestamp : null;
+            // Browsers (other than Safari) can't show TIFF, so the PNG copy stands in for it.
+            $image = $this->asClaude || preg_match('/\.tiff?$/i', $upload->name) ? $preview : route('uploads.image', $upload);
+        }
+
+        return ['name' => $this->asClaude ? app(Broker::class)->filter($upload->name) : $upload->name, 'image' => $image];
     }
 
     /** @return list<array<string, mixed>> */

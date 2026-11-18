@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Updates\UpdateJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 use TornadoEngine\Broker\Filter;
 use TornadoEngine\Broker\Models\Person;
@@ -19,6 +20,7 @@ use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
 use TornadoEngine\Chat\Models\Approval;
 use TornadoEngine\Chat\Models\Conversation;
 use TornadoEngine\Cron\Cron;
+use TornadoEngine\Uploads\Models\Upload;
 
 class ChatTest extends TestCase
 {
@@ -278,5 +280,24 @@ class ChatTest extends TestCase
             ->assertDontSee('Write to Annabel')
             ->assertDontSee('Done for Annabel');
         $this->actingAs($admin)->getJson("/chat/{$conversation->id}/turns?claude=1")->assertJsonMissing(['html' => 'Annabel']);
+    }
+
+    public function test_attached_images_show_in_the_conversation(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->post('/chat', ['text' => 'Look at this']);
+        $message = Conversation::first()->messages()->first();
+        Storage::fake('uploads');
+        Storage::disk('uploads')->put('1/photo.jpg', 'jpeg bytes');
+        $upload = Upload::create(['user_id' => $admin->id, 'name' => 'photo.jpg', 'mime' => 'image/jpeg', 'size' => 10, 'path' => '1/photo.jpg', 'share' => 'text', 'source' => 'chat', 'reference' => (string) $message->id]);
+        Upload::create(['user_id' => $admin->id, 'name' => 'notes.txt', 'mime' => 'text/plain', 'size' => 10, 'path' => '1/notes.txt', 'share' => 'text', 'source' => 'chat', 'reference' => (string) $message->id]);
+
+        $this->actingAs($admin)->get("/chat/{$message->chat_conversation_id}")
+            ->assertSee('data-gallery="'.route('uploads.image', $upload).'"', false)
+            ->assertSee('notes.txt');
+        $this->actingAs($admin)->get(route('uploads.image', $upload))->assertOk()->assertHeader('Content-Type', 'image/jpeg');
+        $this->actingAs(User::factory()->create())->get(route('uploads.image', $upload))->assertForbidden();
+        // Claude never got the image (it wasn't prepared), so "What Claude sees" doesn't show it.
+        $this->actingAs($admin)->get("/chat/{$message->chat_conversation_id}?claude=1")->assertDontSee('data-gallery=', false);
     }
 }
