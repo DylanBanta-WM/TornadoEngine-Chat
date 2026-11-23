@@ -3,6 +3,15 @@
     $icon = 'size-5';
     // In "What Claude sees", titles (from the first message) go through the broker too.
     $title = fn ($chat) => ($asClaude ?? false) ? app(\TornadoEngine\Broker\Broker::class)->filter((string) $chat->title) : $chat->title;
+    // [short label, tooltip] for how long an unsaved chat has left.
+    $expiryOf = function ($chat) {
+        $hoursLeft = max(1, (int) ceil(now()->diffInSeconds($chat->updated_at->copy()->addDays(\TornadoEngine\Chat\Models\Conversation::KEEP_DAYS), false) / 3600));
+        $daysLeft = (int) ceil($hoursLeft / 24);
+
+        return $hoursLeft > 24
+            ? [$daysLeft.'d', trans_choice('This chat will expire in :count day unless saved.|This chat will expire in :count days unless saved.', $daysLeft)]
+            : [$hoursLeft.'h', trans_choice('This chat will expire in :count hour unless saved.|This chat will expire in :count hours unless saved.', $hoursLeft)];
+    };
 @endphp
 
 <x-app-layout fill>
@@ -35,14 +44,32 @@
                 @endif
                 <ul class="space-y-0.5">
                     @foreach ($conversations as $item)
-                        <li>
-                            <a href="{{ route('chat.show', $item) }}" @if ($conversation?->is($item)) aria-current="page" @endif
-                               @class(['flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm', 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100' => $conversation?->is($item), 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-700/70' => ! $conversation?->is($item)])>
+                        <li x-data="{ editing: false }" class="group flex items-center">
+                            <a x-show="! editing" href="{{ route('chat.show', $item) }}" @if ($conversation?->is($item)) aria-current="page" @endif
+                               @class(['flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-3 text-sm', 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100' => $conversation?->is($item), 'text-gray-700 dark:text-gray-300 hover:bg-gray-200/70 dark:hover:bg-gray-700/70' => ! $conversation?->is($item)])>
                                 <span class="min-w-0 flex-1 truncate">{{ $title($item) }}</span>
+                                @unless ($item->saved)
+                                    @php($left = $expiryOf($item))
+                                    <span class="inline-flex shrink-0 items-center gap-0.5 text-xs text-gray-500 dark:text-gray-400" title="{{ $left[1] }}" aria-label="{{ $left[1] }}">
+                                        <svg class="size-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>{{ $left[0] }}
+                                    </span>
+                                @endunless
                                 @if ($item->saved)
                                     <svg class="size-4 shrink-0 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 24 24" aria-label="{{ __('Saved') }}"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
                                 @endif
                             </a>
+                            <button type="button" x-show="! editing" x-on:click="editing = true; $nextTick(() => $refs.name.select())"
+                                    class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-700/70 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
+                                    aria-label="{{ __('Rename') }}" title="{{ __('Rename') }}">
+                                <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+                            </button>
+                            <form x-show="editing" x-cloak method="POST" action="{{ route('chat.rename', $item) }}" class="flex min-h-11 min-w-0 flex-1 items-center">
+                                @csrf
+                                <input x-ref="name" name="title" value="{{ $item->title }}" maxlength="60" required
+                                       x-on:keydown.escape="editing = false" x-on:blur="editing = false"
+                                       aria-label="{{ __('Chat name') }}"
+                                       class="min-w-0 flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100">
+                            </form>
                         </li>
                     @endforeach
                 </ul>
@@ -69,7 +96,23 @@
                 <button type="button" x-on:click="history = true" class="inline-flex size-11 items-center justify-center rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 md:hidden" aria-label="{{ __('History') }}">
                     <svg class="{{ $icon }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" d="M4 6h16M4 12h16M4 18h10"/></svg>
                 </button>
-                <h1 class="min-w-0 flex-1 truncate font-medium text-gray-900 dark:text-gray-100">{{ $conversation ? $title($conversation) : __('New chat') }}</h1>
+                <div x-data="{ editing: false }" class="flex min-w-0 flex-1 items-center gap-1">
+                    <h1 x-show="! editing" class="min-w-0 truncate font-medium text-gray-900 dark:text-gray-100">{{ $conversation ? $title($conversation) : __('New chat') }}</h1>
+                    @if ($conversation)
+                        <button type="button" x-show="! editing" x-on:click="editing = true; $nextTick(() => $refs.name.select())"
+                                class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                aria-label="{{ __('Rename') }}" title="{{ __('Rename') }}">
+                            <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"/></svg>
+                        </button>
+                        <form x-show="editing" x-cloak method="POST" action="{{ route('chat.rename', $conversation) }}" class="flex min-w-0 flex-1">
+                            @csrf
+                            <input x-ref="name" name="title" value="{{ $conversation->title }}" maxlength="60" required
+                                   x-on:keydown.escape="editing = false" x-on:blur="editing = false"
+                                   aria-label="{{ __('Chat name') }}"
+                                   class="min-w-0 flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900 px-2 py-1 text-gray-900 dark:text-gray-100">
+                        </form>
+                    @endif
+                </div>
                 @if ($asClaude ?? false)
                     <span class="shrink-0 rounded bg-indigo-50 dark:bg-indigo-900/50 px-2 py-0.5 text-xs font-medium text-indigo-700 dark:text-indigo-300">{{ __('What Claude sees') }}</span>
                 @endif
@@ -86,6 +129,15 @@
                         <svg class="{{ $icon }}" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                     </a>
 
+                    @unless ($conversation->saved)
+                        @php($expiry = $expiryOf($conversation))
+                        <span class="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium text-gray-500 dark:text-gray-400" tabindex="0" role="img" title="{{ $expiry[1] }}" aria-label="{{ $expiry[1] }}">
+                            <svg class="size-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
+                            {{ $expiry[0] }}
+                        </span>
+                    @endunless
+
+                    <form method="POST" action="{{ route('chat.save', $conversation) }}">
                         @csrf
                         <button class="inline-flex size-11 items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 {{ $conversation->saved ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400' }}"
                                 aria-label="{{ $conversation->saved ? __('Unsave') : __('Save') }}" title="{{ $conversation->saved ? __('Unsave') : __('Save') }}">

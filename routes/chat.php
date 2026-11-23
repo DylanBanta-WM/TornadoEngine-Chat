@@ -24,6 +24,7 @@ Route::middleware(['web', 'auth', 'can:chat.use'])
         Route::get('/{conversation}/turns', [ChatController::class, 'turns'])->name('turns');
         Route::post('/{conversation}/messages', [ChatController::class, 'send'])->name('send');
         Route::post('/{conversation}/stop', [ChatController::class, 'stop'])->name('stop');
+        Route::post('/{conversation}/rename', [ChatController::class, 'rename'])->name('rename');
         Route::post('/{conversation}/save', [ChatController::class, 'save'])->name('save');
         Route::post('/{conversation}/approvals/{approval}', [ChatController::class, 'answer'])->name('answer');
     });

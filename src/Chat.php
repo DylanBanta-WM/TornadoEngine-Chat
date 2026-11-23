@@ -154,6 +154,8 @@ PROMPT;
                 .(in_array('tornado-engine', $vendors, true) ? ' tornado-engine is for official Tornado Engine modules, which every district can install; the others are for this district.' : '');
         }
 
+        $prompt .= "\n\nThe chat has a title in the person's history. After you reply, if the title no longer reflects what the conversation is about, call the rename_chat tool with a short plain title (no names, IDs or pseudonyms). Don't rename a chat whose title still fits; the tool leaves chats the person named themselves alone.";
+
         return $prompt;
     }
 

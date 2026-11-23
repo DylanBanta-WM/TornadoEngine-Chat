@@ -16,11 +16,11 @@ class Conversation extends Model
     /** Days a chat is kept after it was last used, unless it's saved. */
     public const KEEP_DAYS = 14;
 
-    protected $fillable = ['user_id', 'title', 'session_id', 'mode', 'saved'];
+    protected $fillable = ['user_id', 'title', 'session_id', 'mode', 'saved', 'renamed'];
 
     protected function casts(): array
     {
-        return ['saved' => 'boolean'];
+        return ['saved' => 'boolean', 'renamed' => 'boolean'];
     }
 
     /**

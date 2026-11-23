@@ -96,6 +96,7 @@ class Transcript
             in_array($tool, ['Glob', 'Grep'], true) => __('Searched for :pattern', ['pattern' => (string) ($input['pattern'] ?? '')]),
             $tool === 'mcp__tornado-broker__gam' => __('Ran gam :args', ['args' => implode(' ', (array) ($input['args'] ?? []))]),
             $tool === 'mcp__tornado-chat__install_module' => __('Installed the :folder module', ['folder' => (string) ($input['folder'] ?? '')]),
+            $tool === 'mcp__tornado-chat__rename_chat' => null,
             in_array($tool, ['TodoWrite', 'ExitPlanMode', 'mcp__tornado-broker__broker_info'], true) => null,
             default => $tool,
         };

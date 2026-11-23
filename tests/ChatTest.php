@@ -17,6 +17,7 @@ use TornadoEngine\Chat\Chat;
 use TornadoEngine\Chat\Mcp\ChatServer;
 use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
 use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
+use TornadoEngine\Chat\Mcp\Tools\RenameChatTool;
 use TornadoEngine\Chat\Models\Approval;
 use TornadoEngine\Chat\Models\Conversation;
 use TornadoEngine\Cron\Cron;
@@ -204,6 +205,47 @@ class ChatTest extends TestCase
         $this->assertSame('local', Chat::vendor());
     }
 
+    public function test_the_clock_shows_how_long_an_unsaved_chat_has_left(): void
+    {
+        $admin = $this->admin();
+        $chat = Conversation::create(['user_id' => $admin->id, 'title' => 'Temporary']);
+        Conversation::whereKey($chat->id)->update(['updated_at' => now()->subDays(3)->subHour()]);
+
+        $this->actingAs($admin)->get("/chat/{$chat->id}")->assertSee('11d')->assertSee('This chat will expire in 11 days unless saved.');
+
+        Conversation::whereKey($chat->id)->update(['updated_at' => now()->subDays(13)->subHours(18)]);
+        $this->actingAs($admin)->get("/chat/{$chat->id}")->assertSee('6h')->assertSee('This chat will expire in 6 hours unless saved.');
+
+        $chat->update(['saved' => true]);
+        $this->actingAs($admin)->get("/chat/{$chat->id}")->assertDontSee('unless saved');
+    }
+
+    public function test_people_can_rename_their_chats_and_claude_then_leaves_the_name_alone(): void
+    {
+        $admin = $this->admin();
+        $chat = Conversation::create(['user_id' => $admin->id, 'title' => 'First question']);
+        HarnessTask::create(['source' => 'chat', 'reference' => (string) $chat->id, 'status' => 'running', 'prompt' => 'First question']);
+        $updatedAt = $chat->fresh()->updated_at;
+
+        $this->travel(1)->hours();
+        $this->actingAs($admin)->post("/chat/{$chat->id}/rename", ['title' => ''])->assertSessionHasErrors('title');
+
+        ChatServer::tool(RenameChatTool::class, ['title' => 'Planning a field trip form'])->assertOk();
+        $this->assertSame('Planning a field trip form', $chat->fresh()->title);
+        $this->assertFalse($chat->fresh()->renamed);
+
+        $this->actingAs($admin)->post("/chat/{$chat->id}/rename", ['title' => 'My trips'])->assertRedirect();
+        $this->assertSame('My trips', $chat->fresh()->title);
+        $this->assertTrue($chat->fresh()->renamed);
+
+        ChatServer::tool(RenameChatTool::class, ['title' => 'Something else'])->assertSee('named this chat themselves');
+        $this->assertSame('My trips', $chat->fresh()->title);
+        $this->assertEquals($updatedAt, $chat->fresh()->updated_at);
+
+        $other = User::factory()->create();
+        $this->actingAs($other)->post("/chat/{$chat->id}/rename", ['title' => 'Mine now'])->assertForbidden();
+    }
+
     public function test_chats_are_deleted_14_days_after_they_were_last_used_unless_saved(): void
     {
         $admin = $this->admin();
@@ -246,7 +288,7 @@ class ChatTest extends TestCase
         $this->actingAs(User::factory()->create())->post('/administration/chat/prompt', ['prompt' => 'Nope'])->assertForbidden();
 
         $this->actingAs($admin)->post('/administration/chat/prompt', ['prompt' => 'Be brief. Modules: {modules}. Vendor: {vendor}.']);
-        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.$/s', Chat::systemPrompt());
+        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.\n\nThe chat has a title.*rename_chat/s', Chat::systemPrompt());
         $this->actingAs($admin)->post('/chat', ['text' => 'Hello']);
         $this->assertStringStartsWith('Be brief.', HarnessTask::latest('id')->first()->system_prompt);
 

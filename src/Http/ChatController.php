@@ -94,6 +94,17 @@ class ChatController extends Controller
         return back();
     }
 
+    /** The person names a chat themselves; Claude then leaves its title alone. */
+    public function rename(Request $request, Conversation $conversation): RedirectResponse
+    {
+        $this->own($request, $conversation);
+        $data = $request->validate(['title' => ['required', 'string', 'max:60']]);
+        $conversation->timestamps = false;
+        $conversation->update(['title' => trim($data['title']), 'renamed' => true]);
+
+        return back();
+    }
+
     public function stop(Request $request, Conversation $conversation, Chat $chat): RedirectResponse
     {
         $this->own($request, $conversation);
