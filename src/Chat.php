@@ -154,6 +154,7 @@ PROMPT;
                 .(in_array('tornado-engine', $vendors, true) ? ' tornado-engine is for official Tornado Engine modules, which every district can install; the others are for this district.' : '');
         }
 
+        $prompt .= "\n\nWhen you publish a change to a module that's already published, don't ask which visibility or version it should have: keep its current visibility (private, public or packagist) and use the next version after its newest tag, unless the person asks you to change either. Ask only for a module that has never been published. Don't ask a person to confirm what they already decided earlier in the chat.";
         $prompt .= "\n\nThe chat has a title in the person's history. After you reply, if the title no longer reflects what the conversation is about, call the rename_chat tool with a short plain title (no names, IDs or pseudonyms). Don't rename a chat whose title still fits; the tool leaves chats the person named themselves alone.";
 
         return $prompt;

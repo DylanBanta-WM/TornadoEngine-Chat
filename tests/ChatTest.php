@@ -288,7 +288,7 @@ class ChatTest extends TestCase
         $this->actingAs(User::factory()->create())->post('/administration/chat/prompt', ['prompt' => 'Nope'])->assertForbidden();
 
         $this->actingAs($admin)->post('/administration/chat/prompt', ['prompt' => 'Be brief. Modules: {modules}. Vendor: {vendor}.']);
-        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.\n\nThe chat has a title.*rename_chat/s', Chat::systemPrompt());
+        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.\n\nWhen you publish.*keep its current visibility.*The chat has a title.*rename_chat/s', Chat::systemPrompt());
         $this->actingAs($admin)->post('/chat', ['text' => 'Hello']);
         $this->assertStringStartsWith('Be brief.', HarnessTask::latest('id')->first()->system_prompt);
 
