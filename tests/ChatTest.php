@@ -336,4 +336,19 @@ class ChatTest extends TestCase
         $this->assertSame([0, 0], [Conversation::count(), HarnessTask::count()]);
         $this->assertNull($theirs->fresh()->source);
     }
+
+    public function test_with_more_than_one_vendor_name_claude_asks_which_for_each_module(): void
+    {
+        $admin = $this->admin();
+        $this->assertSame([Chat::vendor()], Chat::vendors());
+        $this->assertStringNotContainsString('more than one vendor name', Chat::systemPrompt());
+
+        $this->actingAs($admin)->post('/administration/chat/vendors', ['vendors' => Chat::vendor().', tornado-engine'])->assertSessionHas('chat_vendors_status');
+        $this->assertSame([Chat::vendor(), 'tornado-engine'], Chat::vendors());
+        $this->assertStringContainsString('ask the user which one', Chat::systemPrompt());
+        $this->assertStringContainsString('tornado-engine is for official Tornado Engine modules', Chat::systemPrompt());
+
+        $this->actingAs($admin)->post('/administration/chat/vendors', ['vendors' => 'Bad Name!'])->assertSessionHasErrors('vendors');
+        $this->actingAs(User::factory()->create())->post('/administration/chat/vendors', ['vendors' => 'x'])->assertForbidden();
+    }
 }

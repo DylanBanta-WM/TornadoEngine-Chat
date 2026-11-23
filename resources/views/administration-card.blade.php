@@ -19,6 +19,22 @@
     </form>
 </x-settings-card>
 
+<x-settings-card :title="__('Package names')">
+    @if (session('chat_vendors_status'))
+        <p class="text-green-700 dark:text-green-400">{{ session('chat_vendors_status') }}</p>
+    @endif
+    <form method="POST" action="{{ route('chat.vendors') }}" class="space-y-3">
+        @csrf
+        <x-input-label for="chat-vendors" :value="__('Vendor names')" />
+        <x-text-input id="chat-vendors" name="vendors" class="block w-full font-mono" type="text" :value="old('vendors', implode(', ', \TornadoEngine\Chat\Chat::vendors()))" />
+        <p class="text-gray-600 dark:text-gray-400">{{ __('Modules Claude builds are named vendor/folder. Your district\'s comes first. With more than one, Claude asks which to use for each new module.') }}</p>
+        <x-input-error :messages="$errors->get('vendors')" />
+        <div class="flex justify-end">
+            <x-primary-button>{{ __('Save') }}</x-primary-button>
+        </div>
+    </form>
+</x-settings-card>
+
 {{-- Modules without a settings page of their own. --}}
 @foreach (array_filter(app(\App\Modules\ModuleRegistry::class)->compatible(), fn ($module) => $module->settings === null) as $module)
     @include('chat::module-prompt', ['module' => $module])

@@ -132,6 +132,21 @@ class ChatController extends Controller
     }
 
     /** Administration → Chat: the system prompt; empty or Restore default goes back to the built-in one. */
+    /** The vendor names modules built here can use. */
+    public function vendors(Request $request): RedirectResponse
+    {
+        $text = (string) $request->validate(['vendors' => ['nullable', 'string', 'max:500']])['vendors'];
+        $vendors = array_values(array_unique(array_filter(array_map(fn ($v) => strtolower(trim($v)), preg_split('/[\s,]+/', $text)))));
+        foreach ($vendors as $vendor) {
+            if (! preg_match('/^[a-z0-9]([_.-]?[a-z0-9]+)*$/', $vendor)) {
+                return back()->withErrors(['vendors' => __(':vendor isn\'t a valid Composer vendor name.', ['vendor' => $vendor])])->withInput();
+            }
+        }
+        Setting::put('chat.vendors', $vendors === [] || $vendors === [Chat::vendor()] ? null : json_encode($vendors));
+
+        return back()->with('chat_vendors_status', __('Saved.'));
+    }
+
     public function prompt(Request $request): RedirectResponse
     {
         $text = $request->boolean('restore') ? '' : trim((string) $request->validate(['prompt' => ['nullable', 'string', 'max:20000']])['prompt']);

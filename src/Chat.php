@@ -144,9 +144,29 @@ PROMPT;
 
     public static function systemPrompt(): string
     {
-        return strtr(self::promptTemplate(), [
+        $vendors = self::vendors();
+        $prompt = strtr(self::promptTemplate(), [
             '{modules}' => implode("\n", array_map(fn ($module) => '- '.$module->name.(($info = self::modulePrompt($module)) ? ': '.$info : ''), app(ModuleRegistry::class)->compatible())),
-            '{vendor}' => self::vendor(),
+            '{vendor}' => $vendors[0],
         ]);
+        if (count($vendors) > 1) {
+            $prompt .= "\n\nThis site builds modules under more than one vendor name: ".implode(', ', $vendors).'. Before you start a new module, ask the user which one it\'s for, and use it in the package name (<vendor>/<folder>).'
+                .(in_array('tornado-engine', $vendors, true) ? ' tornado-engine is for official Tornado Engine modules, which every district can install; the others are for this district.' : '');
+        }
+
+        return $prompt;
+    }
+
+    /**
+     * The vendor names modules built here can use (Administration → Chat): the district's own first. With more
+     * than one (a district that also maintains official modules, say), Claude asks which for each new module.
+     *
+     * @return list<string>
+     */
+    public static function vendors(): array
+    {
+        $saved = json_decode(Setting::get('chat.vendors') ?? 'null', true);
+
+        return is_array($saved) && $saved !== [] ? array_values($saved) : [self::vendor()];
     }
 }
