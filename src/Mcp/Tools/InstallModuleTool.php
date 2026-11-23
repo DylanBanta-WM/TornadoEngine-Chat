@@ -33,6 +33,8 @@ class InstallModuleTool extends Tool
 
         @set_time_limit(900);
         $deadline = time() + (int) config('chat.install_wait', 840);
+        // Read back first: before Core 0.31.5 a new job didn't carry its status until it was reloaded.
+        $job->refresh();
         while (in_array($job->status, ['queued', 'running'], true) && time() < $deadline) {
             sleep(3);
             $job->refresh();

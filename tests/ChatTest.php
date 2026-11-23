@@ -165,6 +165,21 @@ class ChatTest extends TestCase
         $this->assertSame(['module', 'local/zz-chat-test', 'modules/zz-chat-test'], [$job->kind, $job->package, $job->repository]);
     }
 
+    public function test_install_module_waits_for_the_updater_and_reports_the_install(): void
+    {
+        config(['chat.install_wait' => 10]);
+        // The updater finishes it straight away (in the database, as the real one does).
+        UpdateJob::created(fn (UpdateJob $job) => \DB::table('update_jobs')->where('id', $job->id)->update(['status' => 'done', 'log' => 'Linked.']));
+        $folder = base_path('modules/zz-chat-test');
+        File::ensureDirectoryExists($folder);
+        file_put_contents("{$folder}/composer.json", json_encode(['name' => 'local/zz-chat-test', 'extra' => ['tornado' => ['provider' => 'Local\\ZzChatTest\\Provider']]]));
+        try {
+            ChatServer::tool(InstallModuleTool::class, ['folder' => 'zz-chat-test'])->assertSee('Installed local/zz-chat-test.');
+        } finally {
+            File::deleteDirectory($folder);
+        }
+    }
+
     public function test_only_people_with_the_permission_and_only_their_own_chats(): void
     {
         $admin = $this->admin();
