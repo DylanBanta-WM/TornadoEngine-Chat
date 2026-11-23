@@ -30,6 +30,12 @@ class ApproveTool extends Tool
         }
 
         $input = (array) $request->get('input', []);
+
+        // Claude Code's own question form can't show on the Chat page: the question goes in the reply instead.
+        if ((string) $request->get('tool_name', '') === 'AskUserQuestion') {
+            return $this->answer(false, 'Don\'t use AskUserQuestion here: it can\'t be shown on the Chat page. Ask your question (with any options) in your reply, and the person answers in their next message.');
+        }
+
         $approval = Approval::create([
             'chat_conversation_id' => (int) $task->reference,
             'harness_task_id' => $task->id,

@@ -366,4 +366,13 @@ class ChatTest extends TestCase
         $this->actingAs($admin)->post('/administration/chat/vendors', ['vendors' => 'Bad Name!'])->assertSessionHasErrors('vendors');
         $this->actingAs(User::factory()->create())->post('/administration/chat/vendors', ['vendors' => 'x'])->assertForbidden();
     }
+
+    public function test_claude_code_question_forms_are_turned_down_without_asking(): void
+    {
+        $this->actingAs($this->admin())->post('/chat', ['text' => 'Hi']);
+        HarnessTask::query()->update(['status' => 'running']);
+
+        ChatServer::tool(ApproveTool::class, ['tool_name' => 'AskUserQuestion', 'input' => ['questions' => []]])->assertSee('Ask your question');
+        $this->assertSame(0, Approval::count(), 'nothing for the person to allow or deny');
+    }
 }
