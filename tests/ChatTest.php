@@ -18,6 +18,7 @@ use TornadoEngine\Chat\Chat;
 use TornadoEngine\Chat\Mcp\ChatServer;
 use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
 use TornadoEngine\Chat\Mcp\Tools\ArtisanTool;
+use TornadoEngine\Chat\Mcp\Tools\CustomizeModuleTool;
 use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
 use TornadoEngine\Chat\Mcp\Tools\RebuildTool;
 use TornadoEngine\Chat\Mcp\Tools\RecentErrorsTool;
@@ -491,5 +492,16 @@ class ChatTest extends TestCase
 
         $job = UpdateJob::latest('id')->first();
         $this->assertSame(['undo', (string) HarnessTask::where('reference', (string) $chat->id)->value('id')], [$job->kind, $job->version]);
+    }
+
+    public function test_customizing_an_installed_module_queues_the_updater_for_admins(): void
+    {
+        $this->running(User::factory()->create());
+        ChatServer::tool(CustomizeModuleTool::class, ['package' => 'laravel/framework'])->assertHasErrors();
+
+        $this->running($this->admin());
+        ChatServer::tool(CustomizeModuleTool::class, ['package' => 'nobody/nothing'])->assertHasErrors()->assertSee('installed module');
+        ChatServer::tool(CustomizeModuleTool::class, ['package' => 'laravel/framework'])->assertHasErrors()->assertSee('hasn\'t finished');
+        $this->assertSame(['customize', 'laravel/framework'], [UpdateJob::latest('id')->value('kind'), UpdateJob::latest('id')->value('package')]);
     }
 }
