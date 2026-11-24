@@ -58,6 +58,8 @@
                                     <svg class="size-4 shrink-0 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 24 24" aria-label="{{ __('Saved') }}"><path d="M6 3h12a1 1 0 011 1v17l-7-4-7 4V4a1 1 0 011-1z"/></svg>
                                 @endif
                             </a>
+                            @unless ($asClaude ?? false)
+                            {{-- Not in "What Claude sees": renaming there would show (and save) the real title. --}}
                             <button type="button" x-show="! editing" x-on:click="editing = true; $nextTick(() => $refs.name.select())"
                                     class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-700/70 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                                     aria-label="{{ __('Rename') }}" title="{{ __('Rename') }}">
@@ -70,6 +72,7 @@
                                        aria-label="{{ __('Chat name') }}"
                                        class="min-w-0 flex-1 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-900 px-2 py-1 text-sm text-gray-900 dark:text-gray-100">
                             </form>
+                            @endunless
                         </li>
                     @endforeach
                 </ul>
@@ -98,7 +101,7 @@
                 </button>
                 <div x-data="{ editing: false }" class="flex min-w-0 flex-1 items-center gap-1">
                     <h1 x-show="! editing" class="min-w-0 truncate font-medium text-gray-900 dark:text-gray-100">{{ $conversation ? $title($conversation) : __('New chat') }}</h1>
-                    @if ($conversation)
+                    @if ($conversation && ! ($asClaude ?? false))
                         <button type="button" x-show="! editing" x-on:click="editing = true; $nextTick(() => $refs.name.select())"
                                 class="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                                 aria-label="{{ __('Rename') }}" title="{{ __('Rename') }}">

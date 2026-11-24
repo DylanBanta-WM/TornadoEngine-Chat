@@ -284,11 +284,11 @@ class ChatTest extends TestCase
     public function test_the_admin_can_change_the_system_prompt(): void
     {
         $admin = $this->admin();
-        $this->actingAs($admin)->get('/administration/chat')->assertOk()->assertSee('{modules}')->assertDontSee('Restore default');
+        $this->actingAs($admin)->get('/settings/chat')->assertOk()->assertSee('{modules}')->assertDontSee('Restore default');
         $this->actingAs(User::factory()->create())->post('/administration/chat/prompt', ['prompt' => 'Nope'])->assertForbidden();
 
         $this->actingAs($admin)->post('/administration/chat/prompt', ['prompt' => 'Be brief. Modules: {modules}. Vendor: {vendor}.']);
-        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.\n\nWhen you publish.*keep its current visibility.*The chat has a title.*rename_chat/s', Chat::systemPrompt());
+        $this->assertMatchesRegularExpression('/^Be brief\. Modules: .*Chat.*\. Vendor: \w+\.\n\nWhen you change a module that was published before.*The chat has a title.*rename_chat/s', Chat::systemPrompt());
         $this->actingAs($admin)->post('/chat', ['text' => 'Hello']);
         $this->assertStringStartsWith('Be brief.', HarnessTask::latest('id')->first()->system_prompt);
 
@@ -311,7 +311,7 @@ class ChatTest extends TestCase
         // Broker has no text of its own: it's listed by name.
         $this->assertStringContainsString("\n- Broker\n", Chat::systemPrompt());
 
-        $this->actingAs($admin)->get('/administration/broker')->assertSee('What Claude knows about Broker');
+        $this->actingAs($admin)->get('/settings/broker')->assertSee('What Claude knows about Broker');
         $this->actingAs($admin)->post('/administration/chat/module-prompt', ['package' => 'tornado-engine/broker', 'prompt' => 'Edited for this district.']);
         $this->assertStringContainsString("\n- Broker: Edited for this district.\n", Chat::systemPrompt());
 
