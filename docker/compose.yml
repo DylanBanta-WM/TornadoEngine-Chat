@@ -1,0 +1,19 @@
+# Chat's browser, started by Tornado Engine Core (see Core's docker/modules.yml). Screenshots of pages in broker view.
+services:
+  chat-browser:
+    restart: unless-stopped
+    build: .
+    environment:
+      BROKER_VIEW_URL: http://nginx-harness
+    depends_on: [nginx-harness]
+    tmpfs:
+      - /tmp
+    shm_size: 256mb
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # internal only: it reaches nginx-harness (broker view) and the website reaches it; nothing else.
+    networks: [internal]
+
+networks:
+  internal:
+    internal: true

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Updates\UpdateJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -19,10 +20,12 @@ use TornadoEngine\Chat\Mcp\ChatServer;
 use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
 use TornadoEngine\Chat\Mcp\Tools\ArtisanTool;
 use TornadoEngine\Chat\Mcp\Tools\CustomizeModuleTool;
+use TornadoEngine\Chat\Mcp\Tools\DatabaseQueryTool;
 use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
 use TornadoEngine\Chat\Mcp\Tools\RebuildTool;
 use TornadoEngine\Chat\Mcp\Tools\RecentErrorsTool;
 use TornadoEngine\Chat\Mcp\Tools\RenameChatTool;
+use TornadoEngine\Chat\Mcp\Tools\ScreenshotTool;
 use TornadoEngine\Chat\Mcp\Tools\SiteStatusTool;
 use TornadoEngine\Chat\Mcp\Tools\UndoChangesTool;
 use TornadoEngine\Chat\Mcp\Tools\ViewPageTool;
@@ -30,6 +33,7 @@ use TornadoEngine\Chat\Models\Approval;
 use TornadoEngine\Chat\Models\Conversation;
 use TornadoEngine\Cron\Cron;
 use TornadoEngine\Uploads\Models\Upload;
+use TornadoEngine\Uploads\Uploads;
 
 class ChatTest extends TestCase
 {
@@ -503,5 +507,49 @@ class ChatTest extends TestCase
         ChatServer::tool(CustomizeModuleTool::class, ['package' => 'nobody/nothing'])->assertHasErrors()->assertSee('installed module');
         ChatServer::tool(CustomizeModuleTool::class, ['package' => 'laravel/framework'])->assertHasErrors()->assertSee('hasn\'t finished');
         $this->assertSame(['customize', 'laravel/framework'], [UpdateJob::latest('id')->value('kind'), UpdateJob::latest('id')->value('package')]);
+    }
+
+    public function test_database_queries_are_read_only_and_go_through_the_broker(): void
+    {
+        $tool = DatabaseQueryTool::class;
+        $this->running(User::factory()->create());
+        ChatServer::tool($tool, ['sql' => 'SELECT 1'])->assertHasErrors();
+
+        $admin = $this->admin();
+        $admin->update(['name' => 'Annabel Quince']);
+        $this->running($admin);
+
+        ChatServer::tool($tool, ['sql' => 'SELECT id, name FROM users WHERE id = '.$admin->id])->assertSee('id')->assertDontSee('Annabel');
+        ChatServer::tool($tool, ['sql' => 'SELECT * FROM users WHERE id = '.$admin->id])->assertSee('[hidden]')->assertDontSee('$2y$');
+        Setting::put('demo.api_token', 'plain-secret-123');
+        ChatServer::tool($tool, ['sql' => "SELECT `key`, value FROM settings WHERE `key` LIKE 'demo.%'"])->assertSee('[hidden]')->assertDontSee('plain-secret-123');
+
+        foreach (['SELECT password FROM users', 'SELECT * FROM sessions', 'DELETE FROM users', 'SELECT 1; DROP TABLE users', 'UPDATE users SET name = 1'] as $sql) {
+            ChatServer::tool($tool, ['sql' => $sql])->assertHasErrors();
+        }
+        $this->assertSame(User::count(), \Illuminate\Support\Facades\DB::table('users')->count(), 'still readable afterwards');
+        $this->assertNotNull(User::factory()->create(), 'and writable');
+    }
+
+    public function test_screenshots_reach_claude_only_with_names_covered(): void
+    {
+        $tool = ScreenshotTool::class;
+        $this->running($this->admin());
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+        Http::fake(['chat-browser:3000/*' => Http::response($png, 200, ['Content-Type' => 'image/png'])]);
+        $this->mock(Uploads::class)->shouldReceive('cover')->once()->andReturnUsing(function ($in, $out) {
+            file_put_contents($out, 'covered');
+
+            return ['covered' => 2, 'text' => 'Students [name p-0123456789]'];
+        });
+
+        $result = ChatServer::tool($tool, ['path' => '/settings']);
+        $result->assertSee('2 places were covered')->assertSee('[name p-0123456789]');
+        $files = glob(storage_path('app/claude/screenshots/*.png'));
+        $this->assertSame('covered', file_get_contents(end($files)), 'Claude gets the covered copy, never the raw one');
+        Http::assertSent(fn ($request) => str_contains($request->url(), 'path=%2Fsettings'));
+        array_map('unlink', $files);
+
+        ChatServer::tool($tool, ['path' => 'https://example.com'])->assertHasErrors();
     }
 }

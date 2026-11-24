@@ -20,10 +20,11 @@
             "core": ">=0.22",
             "core-module": true,
             "provider": "TornadoEngine\\Chat\\ChatServiceProvider",
-            "settings": "/administration/chat"
+            "settings": "/administration/chat",
+            "compose": "docker/compose.yml"
         },
         "branch-alias": {
-            "dev-main": "0.22.x-dev"
+            "dev-main": "0.23.x-dev"
         }
     }
 }
