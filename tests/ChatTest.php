@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Updates\UpdateJob;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 use TornadoEngine\Broker\Filter;
@@ -16,8 +17,14 @@ use TornadoEngine\Broker\Pseudonym;
 use TornadoEngine\Chat\Chat;
 use TornadoEngine\Chat\Mcp\ChatServer;
 use TornadoEngine\Chat\Mcp\Tools\ApproveTool;
+use TornadoEngine\Chat\Mcp\Tools\ArtisanTool;
 use TornadoEngine\Chat\Mcp\Tools\InstallModuleTool;
+use TornadoEngine\Chat\Mcp\Tools\RebuildTool;
+use TornadoEngine\Chat\Mcp\Tools\RecentErrorsTool;
 use TornadoEngine\Chat\Mcp\Tools\RenameChatTool;
+use TornadoEngine\Chat\Mcp\Tools\SiteStatusTool;
+use TornadoEngine\Chat\Mcp\Tools\UndoChangesTool;
+use TornadoEngine\Chat\Mcp\Tools\ViewPageTool;
 use TornadoEngine\Chat\Models\Approval;
 use TornadoEngine\Chat\Models\Conversation;
 use TornadoEngine\Cron\Cron;
@@ -433,5 +440,56 @@ class ChatTest extends TestCase
         $this->actingAs($other)->post('/chat', ['text' => 'Hi', 'model' => 'gpt-9']);
         $this->assertNull(HarnessTask::latest('id')->first()->model);
         $this->assertSame('', Chat::modelFor($other));
+    }
+
+    /** A chat that's running, for the site tools. */
+    private function running(User $user): Conversation
+    {
+        $conversation = Conversation::create(['user_id' => $user->id, 'title' => 'Hi', 'mode' => 'auto']);
+        HarnessTask::create(['source' => 'chat', 'reference' => (string) $conversation->id, 'prompt' => 'Hi', 'status' => 'running']);
+
+        return $conversation;
+    }
+
+    public function test_site_tools_are_for_admins_chats_only(): void
+    {
+        $this->running(User::factory()->create());
+        foreach ([SiteStatusTool::class, RecentErrorsTool::class, RebuildTool::class, UndoChangesTool::class] as $tool) {
+            ChatServer::tool($tool, ['action' => 'status'])->assertHasErrors();
+        }
+        ChatServer::tool(ArtisanTool::class, ['command' => 'about'])->assertHasErrors();
+        ChatServer::tool(ViewPageTool::class, ['path' => '/'])->assertHasErrors();
+    }
+
+    public function test_claude_checks_the_live_site_through_the_broker(): void
+    {
+        $this->running($this->admin());
+
+        ChatServer::tool(SiteStatusTool::class)->assertSee('Core '.config('tornado.version'))->assertSee('tornado-engine/chat')->assertSee('Migrations not run yet');
+        ChatServer::tool(ArtisanTool::class, ['command' => 'about'])->assertSee('artisan about: exit 0');
+        ChatServer::tool(ArtisanTool::class, ['command' => 'db:wipe'])->assertHasErrors();
+        ChatServer::tool(RebuildTool::class, ['action' => 'status'])->assertSee('Running: no');
+
+        // A page with a student's name: Claude gets the pseudonym.
+        Route::middleware('web')->get('/zz-roster', fn () => '<p>Annabel Quince</p>');
+        ChatServer::tool(ViewPageTool::class, ['path' => '/zz-roster'])
+            ->assertSee('/zz-roster: 200')->assertSee('[name '.Pseudonym::for($this->student).']')->assertDontSee('Annabel');
+
+        // Errors from the log, with names replaced.
+        $storage = sys_get_temp_dir().'/chat-storage-'.uniqid();
+        File::ensureDirectoryExists("{$storage}/logs");
+        file_put_contents("{$storage}/logs/laravel.log", "[2026-11-24 10:00:00] production.INFO: fine\n[2026-11-24 10:01:00] production.ERROR: Couldn't save Annabel Quince's form\n#0 /var/www/html/app/X.php(1)\n");
+        $this->app->useStoragePath($storage);
+        ChatServer::tool(RecentErrorsTool::class)->assertSee('production.ERROR')->assertDontSee('Annabel')->assertDontSee('production.INFO');
+        File::deleteDirectory($storage);
+    }
+
+    public function test_undoing_a_chats_changes_queues_the_updater_with_its_runs(): void
+    {
+        $chat = $this->running($this->admin());
+        ChatServer::tool(UndoChangesTool::class)->assertSee('hasn\'t finished');
+
+        $job = UpdateJob::latest('id')->first();
+        $this->assertSame(['undo', (string) HarnessTask::where('reference', (string) $chat->id)->value('id')], [$job->kind, $job->version]);
     }
 }
