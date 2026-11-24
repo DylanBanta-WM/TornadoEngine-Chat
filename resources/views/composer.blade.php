@@ -170,6 +170,14 @@
                       x-on:input="$el.style.height = 'auto'; $el.style.height = Math.min($el.scrollHeight, 200) + 'px'"
                       x-on:keydown.enter="if (! $event.shiftKey && ! window.matchMedia('(pointer: coarse)').matches) { $event.preventDefault(); if (! busy) $el.form.requestSubmit() }"
                       class="block max-h-[200px] min-h-11 min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-2.5 text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:ring-0">{{ old('text') }}</textarea>
+            {{-- Which Claude model answers; remembered for each person. --}}
+            <label for="chat-model" class="sr-only">{{ __('Model') }}</label>
+            <select id="chat-model" name="model" title="{{ __('Model') }}"
+                    class="min-h-11 shrink-0 rounded-full border-0 bg-transparent py-0 pe-7 ps-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 focus:ring-2 focus:ring-indigo-500">
+                @foreach (\TornadoEngine\Chat\Chat::MODELS as $value => $label)
+                    <option value="{{ $value }}" @selected(\TornadoEngine\Chat\Chat::modelFor(auth()->user()) === $value)>{{ __($label) }}</option>
+                @endforeach
+            </select>
             <button type="submit" @disabled($running ?? false) :disabled="busy || @js((bool) ($running ?? false))" aria-label="{{ __('Send') }}"
                     class="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-700 dark:hover:bg-white disabled:opacity-40">
                 <svg class="size-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5m0 0l-6 6m6-6l6 6"/></svg>

@@ -417,4 +417,21 @@ class ChatTest extends TestCase
         ChatServer::tool(ApproveTool::class, ['tool_name' => 'AskUserQuestion', 'input' => ['questions' => []]])->assertSee('Ask your question');
         $this->assertSame(0, Approval::count(), 'nothing for the person to allow or deny');
     }
+
+    public function test_each_person_chooses_the_model_and_it_is_remembered(): void
+    {
+        $admin = $this->admin();
+        $this->actingAs($admin)->get('/chat')->assertSee('Opus (most capable)')->assertSee('Haiku (fastest)');
+
+        $this->actingAs($admin)->post('/chat', ['text' => 'Hi', 'model' => 'opus']);
+        $this->assertSame('opus', HarnessTask::latest('id')->first()->model);
+        $this->assertSame('opus', Chat::modelFor($admin));
+        $this->actingAs($admin)->get('/chat')->assertSee('<option value="opus" selected', false);
+
+        // Someone else keeps the default; a made-up model is ignored.
+        $other = $this->admin();
+        $this->actingAs($other)->post('/chat', ['text' => 'Hi', 'model' => 'gpt-9']);
+        $this->assertNull(HarnessTask::latest('id')->first()->model);
+        $this->assertSame('', Chat::modelFor($other));
+    }
 }

@@ -35,6 +35,7 @@ class ChatController extends Controller
         $conversation = Conversation::create(['user_id' => $request->user()->id, 'title' => Str::limit($data['text'], 60)]);
 
         try {
+            Chat::chooseModel($request->user(), $request->input('model'));
             $chat->send($conversation, $data['text'], $data['uploads'] ?? []);
         } catch (RuntimeException $e) {
             $conversation->delete();
@@ -75,6 +76,7 @@ class ChatController extends Controller
         $data = $this->message($request);
 
         try {
+            Chat::chooseModel($request->user(), $request->input('model'));
             $chat->send($conversation, $data['text'], $data['uploads'] ?? []);
             $conversation->touch();
         } catch (RuntimeException $e) {

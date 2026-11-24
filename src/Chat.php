@@ -4,6 +4,7 @@ namespace TornadoEngine\Chat;
 
 use App\Harness\HarnessTask;
 use App\Models\Setting;
+use App\Models\User;
 use App\Modules\Module;
 use App\Modules\ModuleRegistry;
 use App\Support\Setup;
@@ -24,6 +25,27 @@ class Chat
     public const MODE = 'auto';
 
     public const PROMPT_TOOL = 'mcp__tornado-chat__approve';
+
+    /**
+     * The models people can choose, as Claude Code aliases: each is always the newest model of its kind, so the
+     * list keeps up with new releases. '' is the harness's default.
+     */
+    public const MODELS = ['' => 'Default', 'opus' => 'Opus (most capable)', 'sonnet' => 'Sonnet (balanced)', 'haiku' => 'Haiku (fastest)'];
+
+    /** The model this person last chose ('' for the default). */
+    public static function modelFor(?User $user): string
+    {
+        $model = $user ? (string) Setting::get("chat.model.{$user->id}") : '';
+
+        return array_key_exists($model, self::MODELS) ? $model : '';
+    }
+
+    public static function chooseModel(User $user, ?string $model): void
+    {
+        if ($model !== null && array_key_exists($model, self::MODELS)) {
+            Setting::put("chat.model.{$user->id}", $model === '' ? null : $model);
+        }
+    }
 
     public function __construct(private Broker $broker) {}
 
@@ -57,13 +79,19 @@ class Chat
             default => $this->broker->filter($text)."\n\nFiles they attached (copies for you, read them with the Read tool):\n".$files,
         };
 
-        $task = HarnessTask::queue('chat', $prompt,
-            reference: (string) $conversation->id,
-            session: $this->session($conversation),
-            mode: self::MODE,
-            systemPrompt: self::systemPrompt(),
-            permissionPromptTool: self::PROMPT_TOOL,
-        );
+        // The model goes along on Core 0.36+, which knows about it.
+        $model = collect((new \ReflectionMethod(HarnessTask::class, 'queue'))->getParameters())->contains(fn ($p) => $p->getName() === 'model')
+            ? ['model' => self::modelFor($conversation->user) ?: null] : [];
+        $task = HarnessTask::queue(...[
+            'source' => 'chat',
+            'prompt' => $prompt,
+            'reference' => (string) $conversation->id,
+            'session' => $this->session($conversation),
+            'mode' => self::MODE,
+            'systemPrompt' => self::systemPrompt(),
+            'permissionPromptTool' => self::PROMPT_TOOL,
+            ...$model,
+        ]);
 
         $message = $conversation->messages()->create(['text' => $text, 'harness_task_id' => $task->id]);
         $attached->each->update(['source' => 'chat', 'reference' => (string) $message->id]);
